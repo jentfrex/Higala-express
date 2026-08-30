@@ -4,10 +4,11 @@ services:
   web:
     build: .
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:${PORT:-8000}"
     environment:
       - DATABASE_URL=sqlite:///./higala_express.db
       - REDIS_URL=redis://redis:6379
+      - PORT=${PORT:-8000}
     volumes:
       - .:/app
     depends_on:
