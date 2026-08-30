@@ -454,3 +454,23 @@ def read_read(request: Request):
     if os.path.exists("static/customer.html"):
         return FileResponse("static/customer.html")
     return {"success": True, "service": "Higala Express Global API - National Superapp"}
+
+# ==========================================================
+# --- EXCLUSIVE & HIDDEN PORTALS PARA SA DRIVER & MERCHANT ---
+# ==========================================================
+
+@app.get("/hq/portal/driver", tags=["Secure Portals"], response_class=HTMLResponse)
+def secret_driver_portal():
+    """Eksklusibong link para sa driver.html nga ikaw ray mohatag"""
+    file_path = os.path.join(_STATIC_DIR, "driver.html")
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return HTMLResponse("<h1>404 - driver.html wala makita</h1>", status_code=404)
+
+@app.get("/hq/portal/merchant", tags=["Secure Portals"], response_class=HTMLResponse)
+def secret_merchant_portal():
+    """Eksklusibong link para sa merchant.html nga ikaw ray mohatag"""
+    file_path = os.path.join(_STATIC_DIR, "merchant.html")
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return HTMLResponse("<h1>404 - merchant.html wala makita</h1>", status_code=404)
