@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1c1917">
+  <title>Higala Command Tower — Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            tower: { bg: '#0c0a09', card: '#1c1917', gold: '#d97706', amber: '#f59e0b', glow: '#fbbf24' }
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="/js/higala-db.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    .liquid-header {
+      background: linear-gradient(135deg, rgba(217,119,6,.95) 0%, rgba(180,83,9,.85) 40%, rgba(28,25,23,.92) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    .glass {
+      background: rgba(28, 25, 23, 0.72);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(217, 119, 6, 0.25);
+      box-shadow: 0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(251,191,36,.08);
+    }
+    .glass-light {
+      background: rgba(41, 37, 36, 0.65);
+      border: 1px solid rgba(217, 119, 6, 0.15);
+    }
+    .gold-text { color: #fbbf24; }
+    .tower-bg {
+      background: radial-gradient(ellipse at 20% 0%, rgba(217,119,6,.12) 0%, transparent 50%),
+                  radial-gradient(ellipse at 80% 100%, rgba(245,158,11,.08) 0%, transparent 40%),
+                  linear-gradient(180deg, #0c0a09 0%, #1c1917 50%, #0c0a09 100%);
+    }
+    #map { height: 320px; border-radius: 0.75rem; z-index: 1; }
+    .leaflet-container { background: #1c1917; border-radius: 0.75rem; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #1c1917; }
+    ::-webkit-scrollbar-thumb { background: #d97706; border-radius: 4px; }
+    .tab-active { background: linear-gradient(135deg, #d97706, #b45309); color: #fff; box-shadow: 0 4px 14px rgba(217,119,6,.4); }
+    input[type=range] { accent-color: #d97706; }
+  </style>
+</head>
+<body class="tower-bg min-h-screen text-stone-200" x-data="adminTower()" x-init="init()" x-cloak>
+
+  <!-- Loading / Guard -->
+  <div x-show="!ready" class="fixed inset-0 z-[100] grid place-items-center bg-stone-950">
+    <div class="text-center">
+      <div class="text-4xl mb-3 animate-pulse">👑</div>
+      <p class="text-amber-400 font-bold text-sm tracking-widest uppercase">Securing Command Tower…</p>
+    </div>
+  </div>
+
+  <div x-show="ready" class="pb-10">
+    <!-- Liquid Amber Header -->
+    <header class="liquid-header sticky top-0 z-50 border-b border-amber-600/30 shadow-2xl">
+      <div class="max-w-[1800px] mx-auto px-4 py-3 flex flex-col lg:flex-row justify-between items-center gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-400 to-amber-700 flex items-center justify-center text-stone-950 font-black text-xl shadow-lg">H</div>
+          <div>
+            <h1 class="text-lg font-black text-amber-50 tracking-wider">HIGALA COMMAND TOWER</h1>
+            <p class="text-[10px] font-bold text-amber-200/80 uppercase tracking-widest">CDO Operations · Admin Control</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span x-show="settings.maintenance" class="px-2 py-1 bg-red-600/90 text-white text-[10px] font-black rounded-lg animate-pulse">⚠ MAINTENANCE ON</span>
+          <span class="px-2 py-1 glass-light rounded-lg text-[10px] font-bold text-emerald-400" x-text="'● ' + healthStatus"></span>
+          <span class="text-xs text-amber-100 font-semibold" x-text="session?.user?.name || 'Admin'"></span>
+          <button @click="logout()" class="px-3 py-1.5 bg-stone-900/80 hover:bg-red-900/80 border border-amber-600/40 rounded-xl text-xs font-bold transition">🚪 Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-[1800px] mx-auto px-4 pt-5 space-y-5">
+      <!-- KPI Row: GMV + Platform Revenue + Quick Stats -->
+      <section class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="glass rounded-2xl p-4 border-l-4 border-amber-500">
+          <p class="text-[10px] font-bold text-amber-400/80 uppercase">Global GMV</p>
+          <p class="text-2xl font-black gold-text" x-text="money(gmv)"></p>
+          <p class="text-[10px] text-stone-500 mt-1">Completed orders</p>
+        </div>
+        <div class="glass rounded-2xl p-4 border-l-4 border-emerald-500">
+          <p class="text-[10px] font-bold text-emerald-400/80 uppercase">Platform Revenue</p>
+          <p class="text-2xl font-black text-emerald-400" x-text="money(platformRevenue)"></p>
+          <p class="text-[10px] text-stone-500 mt-1">Commission collected</p>
+        </div>
+        <div class="glass rounded-2xl p-4 border-l-4 border-sky-500">
+          <p class="text-[10px] font-bold text-sky-400/80 uppercase">Active Orders</p>
+          <p class="text-2xl font-black text-sky-300" x-text="activeOrderCount"></p>
+          <p class="text-[10px] text-stone-500 mt-1">Non-terminal status</p>
+        </div>
+        <div class="glass rounded-2xl p-4 border-l-4 border-purple-500">
+          <p class="text-[10px] font-bold text-purple-400/80 uppercase">Total Users</p>
+          <p class="text-2xl font-black text-purple-300" x-text="users.length"></p>
+          <p class="text-[10px] text-stone-500 mt-1" x-text="unverifiedCount + ' pending verify'"></p>
+        </div>
+        <div class="glass rounded-2xl p-4 border-l-4 border-rose-500 col-span-2 lg:col-span-1">
+          <p class="text-[10px] font-bold text-rose-400/80 uppercase">Surge Multiplier</p>
+          <p class="text-2xl font-black text-rose-300" x-text="settings.surgeMultiplier + '×'"></p>
+          <p class="text-[10px] text-stone-500 mt-1">Live pricing factor</p>
+        </div>
+      </section>
+
+      <!-- Tab Navigation -->
+      <nav class="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <template x-for="t in tabs" :key="t.id">
+          <button @click="activeTab = t.id; if (t.id === 'radar') $nextTick(() => initMap())"
+            :class="activeTab === t.id ? 'tab-active' : 'glass-light text-stone-300 hover:text-amber-300'"
+            class="px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5">
+            <span x-text="t.icon"></span><span x-text="t.label"></span>
+          </button>
+        </template>
+      </nav>
+
+      <!-- TAB: Overview -->
+      <section x-show="activeTab === 'overview'" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Commission Ledger -->
+        <div class="glass rounded-2xl p-4 lg:col-span-1 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">💰 Commission Ledger</h2>
+          <div class="space-y-2 text-xs">
+            <div class="glass-light rounded-xl p-3 flex justify-between">
+              <span>Merchant Cut</span>
+              <span class="font-black text-amber-300" x-text="(COMMISSION.MERCHANT * 100) + '%'"></span>
+            </div>
+            <div class="glass-light rounded-xl p-3 flex justify-between">
+              <span>Rider Delivery</span>
+              <span class="font-black text-emerald-300" x-text="(COMMISSION.DELIVERY * 100) + '%'"></span>
+            </div>
+            <div class="glass-light rounded-xl p-3 flex justify-between">
+              <span>Rider Quota (&lt;10 rides)</span>
+              <span class="font-black text-sky-300" x-text="(COMMISSION.RIDER_QUOTA * 100) + '%'"></span>
+            </div>
+            <div class="glass-light rounded-xl p-3 flex justify-between">
+              <span>Taxi / Car</span>
+              <span class="font-black text-purple-300" x-text="(COMMISSION.TAXI * 100) + '%'"></span>
+            </div>
+          </div>
+          <div class="glass-light rounded-xl p-3 text-[11px] space-y-1">
+            <p class="font-bold text-amber-300">Ledger Totals (Completed)</p>
+            <div class="flex justify-between"><span>Merchant Commission</span><span x-text="money(ledgerTotals.merchant)"></span></div>
+            <div class="flex justify-between"><span>Rider Commission</span><span x-text="money(ledgerTotals.rider)"></span></div>
+            <div class="flex justify-between font-black text-emerald-400 border-t border-stone-700 pt-1"><span>Platform Total</span><span x-text="money(ledgerTotals.platform)"></span></div>
+          </div>
+        </div>
+
+        <!-- Revenue by Service -->
+        <div class="glass rounded-2xl p-4 lg:col-span-1 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">📊 Revenue by Service</h2>
+          <template x-for="svc in revenueByService" :key="svc.service">
+            <div class="glass-light rounded-xl p-3">
+              <div class="flex justify-between text-xs font-bold mb-1">
+                <span class="uppercase text-amber-200" x-text="svc.service"></span>
+                <span x-text="svc.count + ' orders'"></span>
+              </div>
+              <div class="flex justify-between text-[11px] text-stone-400">
+                <span>GMV</span><span class="text-emerald-400 font-bold" x-text="money(svc.gmv)"></span>
+              </div>
+              <div class="flex justify-between text-[11px] text-stone-400">
+                <span>Platform</span><span class="text-amber-300 font-bold" x-text="money(svc.revenue)"></span>
+              </div>
+              <div class="mt-1 h-1.5 bg-stone-800 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full" :style="'width:' + svc.pct + '%'"></div>
+              </div>
+            </div>
+          </template>
+          <p x-show="!revenueByService.length" class="text-xs text-stone-500 italic text-center py-4">No completed orders yet.</p>
+        </div>
+
+        <!-- System Health -->
+        <div class="glass rounded-2xl p-4 lg:col-span-1 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">🩺 System Health</h2>
+          <template x-for="h in healthChecks" :key="h.label">
+            <div class="glass-light rounded-xl p-3 flex justify-between items-center text-xs">
+              <span x-text="h.label"></span>
+              <span :class="h.ok ? 'text-emerald-400' : 'text-red-400'" class="font-bold" x-text="h.ok ? '● OK' : '● ISSUE'"></span>
+            </div>
+          </template>
+          <div class="glass-light rounded-xl p-3 text-[11px] space-y-1">
+            <p><span class="text-stone-500">Storage:</span> <span class="text-amber-300" x-text="storageSize"></span></p>
+            <p><span class="text-stone-500">Last refresh:</span> <span x-text="lastRefresh"></span></p>
+            <button @click="refreshAll()" class="w-full mt-2 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition">↻ Refresh Data</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Live Radar Map -->
+      <section x-show="activeTab === 'radar'" class="space-y-4">
+        <div class="glass rounded-2xl p-4">
+          <div class="flex flex-wrap justify-between items-center gap-2 mb-3 border-b border-amber-600/30 pb-2">
+            <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider">📡 Live Order Radar — CDO</h2>
+            <div class="flex items-center gap-2">
+              <label class="flex items-center gap-1.5 text-[11px]">
+                <input type="checkbox" x-model="showGeofence" @change="toggleGeofence()" class="accent-amber-500">
+                CDO Geofence
+              </label>
+              <select x-model="mapStatusFilter" @change="updateMapMarkers()" class="glass-light rounded-lg px-2 py-1 text-[11px] outline-none">
+                <option value="all">All Orders</option>
+                <option value="pending">Pending</option>
+                <option value="active">In Progress</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+          </div>
+          <div id="map" class="border border-amber-600/30"></div>
+          <div class="mt-3 flex flex-wrap gap-3 text-[10px] text-stone-400">
+            <span>🟡 Pending</span><span>🔵 Active</span><span>🟢 Completed</span><span>🟠 Drivers Online</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Orders -->
+      <section x-show="activeTab === 'orders'" class="space-y-4">
+        <div class="glass rounded-2xl p-4">
+          <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+            <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider">📦 All Orders</h2>
+            <select x-model="orderStatusFilter" class="glass-light rounded-lg px-3 py-1.5 text-xs outline-none">
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="accepted">Accepted</option>
+              <option value="preparing">Preparing</option>
+              <option value="picked_up">Picked Up</option>
+              <option value="in_transit">In Transit</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="overflow-x-auto max-h-[480px] overflow-y-auto">
+            <table class="w-full text-[11px]">
+              <thead class="sticky top-0 bg-stone-900/95 text-amber-400 uppercase">
+                <tr>
+                  <th class="text-left p-2">ID</th>
+                  <th class="text-left p-2">Customer</th>
+                  <th class="text-left p-2">Service</th>
+                  <th class="text-left p-2">Status</th>
+                  <th class="text-right p-2">Total</th>
+                  <th class="text-right p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="o in filteredOrders" :key="o.id">
+                  <tr class="border-t border-stone-800 hover:bg-stone-800/50">
+                    <td class="p-2 font-mono text-amber-300" x-text="o.id.slice(-8)"></td>
+                    <td class="p-2" x-text="o.customerName"></td>
+                    <td class="p-2 uppercase" x-text="o.service"></td>
+                    <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="statusClass(o.status)" x-text="o.status"></span></td>
+                    <td class="p-2 text-right font-bold" x-text="money(o.total)"></td>
+                    <td class="p-2 text-right space-x-1">
+                      <button x-show="o.status !== 'completed'" @click="forceOrder(o.id, 'completed')" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 rounded text-[10px] font-bold">Complete</button>
+                      <button x-show="o.status !== 'cancelled'" @click="forceOrder(o.id, 'cancelled')" class="px-2 py-0.5 bg-red-800 hover:bg-red-700 rounded text-[10px] font-bold">Cancel</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p x-show="!filteredOrders.length" class="text-center text-stone-500 py-8 text-xs italic">No orders match filter.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Users & Verification -->
+      <section x-show="activeTab === 'users'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Verification Queue -->
+        <div class="glass rounded-2xl p-4 space-y-3">
+          <div class="flex justify-between items-center border-b border-amber-600/30 pb-2">
+            <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider">🛡️ Verification Queue</h2>
+            <span class="px-2 py-0.5 bg-amber-600 text-white text-[10px] font-bold rounded-full" x-text="unverifiedUsers.length + ' pending'"></span>
+          </div>
+          <template x-for="u in unverifiedUsers" :key="u.id">
+            <div class="glass-light rounded-xl p-3 space-y-2">
+              <div class="flex justify-between text-xs">
+                <span class="font-bold text-amber-200" x-text="u.name"></span>
+                <span class="px-1.5 py-0.5 bg-stone-700 rounded text-[10px] uppercase" x-text="u.role"></span>
+              </div>
+              <p class="text-[10px] text-stone-400" x-text="u.email + ' · ' + u.barangay"></p>
+              <button @click="verifyUser(u.id)" class="w-full py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-lg text-[11px]">✓ Verify User</button>
+            </div>
+          </template>
+          <p x-show="!unverifiedUsers.length" class="text-xs text-stone-500 italic text-center py-6">All users verified.</p>
+        </div>
+
+        <!-- All Users Table -->
+        <div class="glass rounded-2xl p-4">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2 mb-3">👥 All Users</h2>
+          <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
+            <table class="w-full text-[11px]">
+              <thead class="sticky top-0 bg-stone-900/95 text-amber-400 uppercase">
+                <tr>
+                  <th class="text-left p-2">Name</th>
+                  <th class="text-left p-2">Role</th>
+                  <th class="text-left p-2">Barangay</th>
+                  <th class="text-center p-2">Verified</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="u in users" :key="u.id">
+                  <tr class="border-t border-stone-800 hover:bg-stone-800/50">
+                    <td class="p-2">
+                      <div class="font-bold" x-text="u.name"></div>
+                      <div class="text-[10px] text-stone-500" x-text="u.email"></div>
+                    </td>
+                    <td class="p-2 uppercase" x-text="u.role"></td>
+                    <td class="p-2" x-text="u.barangay"></td>
+                    <td class="p-2 text-center" x-text="u.verified ? '✅' : '⏳'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Fleet -->
+      <section x-show="activeTab === 'fleet'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Driver Fleet -->
+        <div class="glass rounded-2xl p-4">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2 mb-3">🛵 Driver Fleet Status</h2>
+          <div class="space-y-2 max-h-[400px] overflow-y-auto">
+            <template x-for="d in drivers" :key="d.id">
+              <div class="glass-light rounded-xl p-3 text-xs">
+                <div class="flex justify-between items-center">
+                  <span class="font-bold text-amber-200" x-text="d.name"></span>
+                  <span :class="d.online ? 'text-emerald-400' : 'text-stone-500'" class="font-bold text-[10px]" x-text="d.online ? '● ONLINE' : '○ OFFLINE'"></span>
+                </div>
+                <div class="mt-1 text-[10px] text-stone-400 space-y-0.5">
+                  <p x-text="d.vehicleType + ' · ' + d.plateNo"></p>
+                  <p>Today: <span class="text-amber-300 font-bold" x-text="todayRides(d)"></span> rides · Earnings: <span x-text="money(d.earnings || 0)"></span></p>
+                  <p>Rate: <span class="text-emerald-400" x-text="(riderRate(d) * 100) + '%'"></span>
+                    <span x-show="todayRides(d) >= COMMISSION.RIDER_QUOTA_THRESHOLD" class="text-sky-400"> (quota tier)</span>
+                  </p>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Merchants -->
+        <div class="glass rounded-2xl p-4">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2 mb-3">🏪 Merchant List</h2>
+          <div class="space-y-2 max-h-[400px] overflow-y-auto">
+            <template x-for="m in merchants" :key="m.id">
+              <div class="glass-light rounded-xl p-3 text-xs">
+                <div class="flex justify-between">
+                  <span class="font-bold text-amber-200" x-text="m.name"></span>
+                  <span :class="m.open ? 'text-emerald-400' : 'text-red-400'" x-text="m.open ? 'OPEN' : 'CLOSED'"></span>
+                </div>
+                <p class="text-[10px] text-stone-400 mt-1" x-text="m.category + ' · ' + m.barangay + ' · ⭐ ' + m.rating"></p>
+                <p class="text-[10px] text-amber-400">Commission: <span x-text="(m.commissionRate * 100) + '%'"></span></p>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Daily Ride Quota Monitor -->
+        <div class="glass rounded-2xl p-4 lg:col-span-2">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2 mb-3">📈 Daily Ride Quota Monitor</h2>
+          <p class="text-[11px] text-stone-400 mb-3">Riders with &lt;<span x-text="COMMISSION.RIDER_QUOTA_THRESHOLD"></span> rides today pay <span x-text="(COMMISSION.DELIVERY*100)+'%'"></span> commission; at threshold, rate drops to <span x-text="(COMMISSION.RIDER_QUOTA*100)+'%'"></span>.</p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <template x-for="d in drivers" :key="'q-'+d.id">
+              <div class="glass-light rounded-xl p-3 text-center">
+                <p class="text-[10px] font-bold text-amber-300 truncate" x-text="d.name"></p>
+                <p class="text-2xl font-black mt-1" :class="todayRides(d) >= COMMISSION.RIDER_QUOTA_THRESHOLD ? 'text-emerald-400' : 'text-amber-400'" x-text="todayRides(d)"></p>
+                <p class="text-[9px] text-stone-500">/ <span x-text="COMMISSION.RIDER_QUOTA_THRESHOLD"></span> quota</p>
+                <div class="mt-1 h-1 bg-stone-800 rounded-full"><div class="h-full bg-amber-500 rounded-full" :style="'width:' + Math.min(100, (todayRides(d)/COMMISSION.RIDER_QUOTA_THRESHOLD)*100) + '%'"></div></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Finance -->
+      <section x-show="activeTab === 'finance'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Wallet Overview -->
+        <div class="glass rounded-2xl p-4">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2 mb-3">💳 Wallet Overview</h2>
+          <div class="space-y-2 max-h-[300px] overflow-y-auto">
+            <template x-for="w in walletEntries" :key="w.userId">
+              <div class="glass-light rounded-xl p-3 flex justify-between text-xs">
+                <div>
+                  <p class="font-bold text-amber-200" x-text="w.name"></p>
+                  <p class="text-[10px] text-stone-500" x-text="w.role"></p>
+                </div>
+                <span class="font-black text-emerald-400" x-text="money(w.balance)"></span>
+              </div>
+            </template>
+          </div>
+          <p class="mt-2 text-[11px] text-stone-500">Total float: <span class="text-amber-300 font-bold" x-text="money(totalWalletFloat)"></span></p>
+        </div>
+
+        <!-- Dispute Refund Panel -->
+        <div class="glass rounded-2xl p-4 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">⚖️ Dispute Refund Panel</h2>
+          <template x-for="d in disputes" :key="d.id">
+            <div class="glass-light rounded-xl p-3 text-xs space-y-2">
+              <div class="flex justify-between">
+                <span class="font-bold" x-text="'#' + d.id.slice(-6)"></span>
+                <span class="text-amber-300" x-text="d.status || 'open'"></span>
+              </div>
+              <p class="text-stone-400" x-text="d.reason || d.message || 'No details'"></p>
+              <div class="flex gap-2">
+                <input type="number" x-model.number="d._refundAmt" placeholder="Amount" class="flex-1 glass-light rounded-lg px-2 py-1 text-xs outline-none">
+                <button @click="processRefund(d)" class="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 rounded-lg font-bold text-[10px]">Refund</button>
+              </div>
+            </div>
+          </template>
+          <div x-show="!disputes.length" class="text-center py-4">
+            <p class="text-xs text-stone-500 italic mb-2">No open disputes.</p>
+            <button @click="createSampleDispute()" class="text-[10px] text-amber-400 underline">+ Log test dispute</button>
+          </div>
+        </div>
+
+        <!-- Commission Calculator -->
+        <div class="glass rounded-2xl p-4 lg:col-span-2 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">🧮 Commission Calculator</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label class="text-[10px] text-stone-400 uppercase">Subtotal ₱</label>
+              <input type="number" x-model.number="calc.subtotal" @input="runCalc()" class="w-full glass-light rounded-lg px-3 py-2 mt-1 outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="text-[10px] text-stone-400 uppercase">Delivery Fee ₱</label>
+              <input type="number" x-model.number="calc.deliveryFee" @input="runCalc()" class="w-full glass-light rounded-lg px-3 py-2 mt-1 outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="text-[10px] text-stone-400 uppercase">Vehicle</label>
+              <select x-model="calc.vehicleType" @change="runCalc()" class="w-full glass-light rounded-lg px-3 py-2 mt-1 outline-none">
+                <option value="motor">Motor</option>
+                <option value="car">Car / Taxi</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-stone-400 uppercase">Rides Today</label>
+              <input type="number" x-model.number="calc.ridesToday" @input="runCalc()" min="0" class="w-full glass-light rounded-lg px-3 py-2 mt-1 outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+          </div>
+          <div x-show="calcResult" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+            <div class="glass-light rounded-xl p-3"><span class="text-stone-500">Merchant Cut</span><p class="font-black text-amber-300" x-text="money(calcResult.merchantCut)"></p></div>
+            <div class="glass-light rounded-xl p-3"><span class="text-stone-500">Rider Cut (<span x-text="(calcResult.riderRate*100)+'%'"></span>)</span><p class="font-black text-emerald-300" x-text="money(calcResult.riderCut)"></p></div>
+            <div class="glass-light rounded-xl p-3"><span class="text-stone-500">Platform Total</span><p class="font-black text-sky-300" x-text="money(calcResult.platformTotal)"></p></div>
+            <div class="glass-light rounded-xl p-3"><span class="text-stone-500">Merchant Net</span><p class="font-black text-purple-300" x-text="money(calcResult.merchantNet)"></p></div>
+          </div>
+        </div>
+
+        <!-- Promo Code Manager -->
+        <div class="glass rounded-2xl p-4 lg:col-span-2">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2 mb-3">🎟️ Promo Code Manager</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <template x-for="p in promos" :key="p.code">
+              <div class="glass-light rounded-xl p-3 text-xs flex justify-between items-center">
+                <div>
+                  <span class="font-black text-amber-300" x-text="p.code"></span>
+                  <span class="ml-2 text-stone-400" x-text="p.type === 'percent' ? p.value + '%' : '₱' + p.value"></span>
+                  <p class="text-[10px] text-stone-500">Min: <span x-text="money(p.minSubtotal)"></span></p>
+                </div>
+                <button @click="togglePromo(p.code)" :class="p.active ? 'bg-emerald-700' : 'bg-stone-700'" class="px-2 py-1 rounded-lg text-[10px] font-bold" x-text="p.active ? 'Active' : 'Inactive'"></button>
+              </div>
+            </template>
+          </div>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <input x-model="newPromo.code" placeholder="CODE" class="glass-light rounded-lg px-3 py-2 outline-none w-28 uppercase">
+            <select x-model="newPromo.type" class="glass-light rounded-lg px-2 py-2 outline-none">
+              <option value="flat">Flat ₱</option>
+              <option value="percent">Percent %</option>
+            </select>
+            <input type="number" x-model.number="newPromo.value" placeholder="Value" class="glass-light rounded-lg px-3 py-2 outline-none w-20">
+            <input type="number" x-model.number="newPromo.minSubtotal" placeholder="Min spend" class="glass-light rounded-lg px-3 py-2 outline-none w-24">
+            <button @click="addPromo()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded-lg font-bold">+ Add Promo</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: System Controls -->
+      <section x-show="activeTab === 'system'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Broadcast -->
+        <div class="glass rounded-2xl p-4 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">📢 Broadcast Notification</h2>
+          <textarea x-model="settings.broadcast" rows="3" placeholder="Platform-wide announcement…" class="w-full glass-light rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-500 resize-none"></textarea>
+          <button @click="saveBroadcast()" class="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs">Save & Push Broadcast</button>
+          <p x-show="broadcastSaved" class="text-[10px] text-emerald-400 font-bold">✓ Broadcast saved to higala_settings.broadcast</p>
+        </div>
+
+        <!-- Surge Pricing -->
+        <div class="glass rounded-2xl p-4 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">⚡ Dynamic Surge Pricing</h2>
+          <div class="flex justify-between text-xs">
+            <span>Multiplier</span>
+            <span class="font-black text-amber-300" x-text="settings.surgeMultiplier + '×'"></span>
+          </div>
+          <input type="range" min="1" max="3" step="0.1" x-model.number="settings.surgeMultiplier" @input="saveSurge()" class="w-full">
+          <div class="flex justify-between text-[10px] text-stone-500"><span>1.0× Normal</span><span>3.0× Peak</span></div>
+        </div>
+
+        <!-- Maintenance Mode -->
+        <div class="glass rounded-2xl p-4 space-y-3">
+          <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider border-b border-amber-600/30 pb-2">🔧 Maintenance Mode</h2>
+          <label class="flex items-center justify-between glass-light rounded-xl p-4 cursor-pointer">
+            <div>
+              <p class="text-xs font-bold">Platform Lockdown</p>
+              <p class="text-[10px] text-stone-500">Blocks new orders when enabled</p>
+            </div>
+            <input type="checkbox" x-model="settings.maintenance" @change="saveMaintenance()" class="w-5 h-5 accent-amber-500">
+          </label>
+        </div>
+
+        <!-- Audit Log -->
+        <div class="glass rounded-2xl p-4 flex flex-col">
+          <div class="flex justify-between items-center border-b border-amber-600/30 pb-2 mb-2">
+            <h2 class="text-xs font-black text-amber-400 uppercase tracking-wider">📝 Audit Log Trails</h2>
+            <button @click="exportAudit()" class="px-2 py-1 bg-stone-700 hover:bg-stone-600 rounded-lg text-[10px] font-bold">⬇ Export JSON</button>
+          </div>
+          <div class="glass-light rounded-xl p-2 flex-1 max-h-52 overflow-y-auto font-mono text-[10px] space-y-0.5 text-emerald-400/90">
+            <template x-for="log in auditLogs" :key="log.id">
+              <div><span class="text-stone-600" x-text="'[' + formatTime(log.at) + ']'"></span> <span class="text-amber-400" x-text="log.action"></span> <span class="text-stone-500" x-text="JSON.stringify(log.meta)"></span></div>
+            </template>
+            <p x-show="!auditLogs.length" class="text-stone-500 italic">No audit entries.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+  function adminTower() {
+    const DB = window.HigalaDB;
+    return {
+      ready: false,
+      session: null,
+      activeTab: 'overview',
+      COMMISSION: DB.COMMISSION,
+      tabs: [
+        { id: 'overview', icon: '📊', label: 'Overview' },
+        { id: 'radar', icon: '📡', label: 'Live Radar' },
+        { id: 'orders', icon: '📦', label: 'Orders' },
+        { id: 'users', icon: '👥', label: 'Users' },
+        { id: 'fleet', icon: '🛵', label: 'Fleet' },
+        { id: 'finance', icon: '💰', label: 'Finance' },
+        { id: 'system', icon: '⚙️', label: 'System' },
+      ],
+      users: [],
+      orders: [],
+      drivers: [],
+      merchants: [],
+      disputes: [],
+      promos: [],
+      auditLogs: [],
+      settings: { surgeMultiplier: 1, broadcast: '', maintenance: false },
+      gmv: 0,
+      platformRevenue: 0,
+      orderStatusFilter: 'all',
+      mapStatusFilter: 'all',
+      showGeofence: true,
+      broadcastSaved: false,
+      lastRefresh: '',
+      storageSize: '0 KB',
+      healthStatus: 'Healthy',
+      calc: { subtotal: 500, deliveryFee: 65, vehicleType: 'motor', ridesToday: 5 },
+      calcResult: null,
+      newPromo: { code: '', type: 'flat', value: 50, minSubtotal: 200 },
+      map: null,
+      markersLayer: null,
+      geofenceLayer: null,
+
+      init() {
+        const session = DB.requireRole('admin');
+        if (!session) {
+          window.location.replace('/index.html');
+          return;
+        }
+        this.session = session;
+        this.refreshAll();
+        this.runCalc();
+        this.ready = true;
+        this.$nextTick(() => {
+          if (this.activeTab === 'radar') this.initMap();
+        });
+      },
+
+      money(n) { return DB.money(n); },
+
+      refreshAll() {
+        this.users = DB.getUsers();
+        this.orders = DB.getOrders();
+        this.drivers = DB.read(DB.KEYS.drivers, []);
+        this.merchants = DB.read(DB.KEYS.merchants, []);
+        this.disputes = DB.read(DB.KEYS.disputes, []).map(d => ({ ...d, _refundAmt: d._refundAmt || d.amount || 0 }));
+        this.promos = DB.read(DB.KEYS.promos, []);
+        this.auditLogs = DB.read(DB.KEYS.audit, []);
+        this.settings = { ...DB.read(DB.KEYS.settings, {}), surgeMultiplier: DB.read(DB.KEYS.settings, {}).surgeMultiplier ?? 1 };
+        this.gmv = DB.gmv();
+        this.platformRevenue = DB.platformRevenue();
+        this.lastRefresh = new Date().toLocaleTimeString();
+        this.computeHealth();
+        this.computeStorage();
+      },
+
+      get unverifiedUsers() { return this.users.filter(u => !u.verified); },
+      get unverifiedCount() { return this.unverifiedUsers.length; },
+      get activeOrderCount() { return this.orders.filter(o => !['completed', 'cancelled'].includes(o.status)).length; },
+
+      get filteredOrders() {
+        if (this.orderStatusFilter === 'all') return this.orders;
+        return this.orders.filter(o => o.status === this.orderStatusFilter);
+      },
+
+      get ledgerTotals() {
+        const completed = this.orders.filter(o => o.status === 'completed');
+        let merchant = 0, rider = 0, platform = 0;
+        completed.forEach(o => {
+          const c = o.commission || DB.calcCommissionBreakdown(o);
+          merchant += c.merchantCut || 0;
+          rider += c.riderCut || 0;
+          platform += c.platformTotal || 0;
+        });
+        return { merchant, rider, platform };
+      },
+
+      get revenueByService() {
+        const completed = this.orders.filter(o => o.status === 'completed');
+        const map = {};
+        completed.forEach(o => {
+          const svc = o.service || 'other';
+          if (!map[svc]) map[svc] = { service: svc, count: 0, gmv: 0, revenue: 0 };
+          map[svc].count++;
+          map[svc].gmv += o.total || 0;
+          map[svc].revenue += (o.commission?.platformTotal || 0);
+        });
+        const arr = Object.values(map);
+        const maxGmv = Math.max(...arr.map(a => a.gmv), 1);
+        arr.forEach(a => { a.pct = Math.round((a.gmv / maxGmv) * 100); });
+        return arr.sort((a, b) => b.gmv - a.gmv);
+      },
+
+      get walletEntries() {
+        const wallets = DB.read(DB.KEYS.wallet, {});
+        return this.users.map(u => ({
+          userId: u.id,
+          name: u.name,
+          role: u.role,
+          balance: (wallets[u.id] || {}).balance || 0,
+        })).filter(w => w.balance > 0 || w.role !== 'customer');
+      },
+
+      get totalWalletFloat() {
+        const wallets = DB.read(DB.KEYS.wallet, {});
+        return Object.values(wallets).reduce((s, w) => s + (w.balance || 0), 0);
+      },
+
+      get healthChecks() {
+        return [
+          { label: 'Database Seeded', ok: this.users.length > 0 },
+          { label: 'Session Active', ok: !!this.session },
+          { label: 'Orders Pipeline', ok: true },
+          { label: 'Wallet System', ok: Object.keys(DB.read(DB.KEYS.wallet, {})).length > 0 },
+          { label: 'Audit Logging', ok: this.auditLogs.length >= 0 },
+          { label: 'Geofence API', ok: DB.isInGeofence(DB.CDO_CENTER.lat, DB.CDO_CENTER.lng) },
+        ];
+      },
+
+      computeHealth() {
+        const issues = this.healthChecks.filter(h => !h.ok).length;
+        this.healthStatus = issues === 0 ? 'Healthy' : issues + ' issue(s)';
+      },
+
+      computeStorage() {
+        let total = 0;
+        Object.values(DB.KEYS).forEach(k => {
+          const v = localStorage.getItem(k);
+          if (v) total += v.length * 2;
+        });
+        this.storageSize = total > 1024 ? (total / 1024).toFixed(1) + ' KB' : total + ' B';
+      },
+
+      todayRides(d) { return DB.countTodayRides(d.id); },
+
+      riderRate(d) {
+        return DB.riderCommissionRate(d.id, d.vehicleType);
+      },
+
+      statusClass(s) {
+        const m = {
+          pending: 'bg-amber-900/60 text-amber-300',
+          completed: 'bg-emerald-900/60 text-emerald-300',
+          cancelled: 'bg-red-900/60 text-red-300',
+        };
+        return m[s] || 'bg-sky-900/60 text-sky-300';
+      },
+
+      formatTime(iso) {
+        return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      },
+
+      verifyUser(userId) {
+        DB.updateUser(userId, { verified: true });
+        DB.audit('admin.verify_user', { userId, adminId: this.session.userId });
+        this.refreshAll();
+      },
+
+      saveBroadcast() {
+        const s = DB.read(DB.KEYS.settings, {});
+        s.broadcast = this.settings.broadcast;
+        DB.write(DB.KEYS.settings, s);
+        DB.pushNotification({ type: 'broadcast', message: this.settings.broadcast });
+        DB.audit('admin.broadcast', { message: this.settings.broadcast });
+        this.broadcastSaved = true;
+        setTimeout(() => { this.broadcastSaved = false; }, 3000);
+      },
+
+      saveSurge() {
+        const s = DB.read(DB.KEYS.settings, {});
+        s.surgeMultiplier = Number(this.settings.surgeMultiplier);
+        DB.write(DB.KEYS.settings, s);
+        DB.audit('admin.surge_update', { multiplier: s.surgeMultiplier });
+      },
+
+      saveMaintenance() {
+        const s = DB.read(DB.KEYS.settings, {});
+        s.maintenance = this.settings.maintenance;
+        DB.write(DB.KEYS.settings, s);
+        DB.audit('admin.maintenance', { enabled: s.maintenance });
+      },
+
+      forceOrder(orderId, status) {
+        if (!confirm('Force ' + status + ' order ' + orderId + '?')) return;
+        DB.updateOrder(orderId, { status });
+        DB.audit('admin.force_order', { orderId, status });
+        this.refreshAll();
+        if (this.map) this.updateMapMarkers();
+      },
+
+      processRefund(dispute) {
+        const amt = Number(dispute._refundAmt);
+        if (!amt || amt <= 0) return alert('Enter a valid refund amount.');
+        const userId = dispute.userId || dispute.customerId;
+        if (userId) DB.walletTopUp(userId, amt, 'Dispute Refund');
+        const list = DB.read(DB.KEYS.disputes, []);
+        const idx = list.findIndex(d => d.id === dispute.id);
+        if (idx >= 0) { list[idx].status = 'refunded'; list[idx].refundAmount = amt; }
+        DB.write(DB.KEYS.disputes, list);
+        DB.audit('admin.dispute_refund', { disputeId: dispute.id, amount: amt });
+        this.refreshAll();
+      },
+
+      createSampleDispute() {
+        const list = DB.read(DB.KEYS.disputes, []);
+        const customer = this.users.find(u => u.role === 'customer');
+        list.unshift({
+          id: DB.uid('dsp'),
+          userId: customer?.id,
+          customerId: customer?.id,
+          orderId: this.orders[0]?.id,
+          reason: 'Wrong items delivered',
+          amount: 150,
+          status: 'open',
+          at: new Date().toISOString(),
+        });
+        DB.write(DB.KEYS.disputes, list);
+        DB.audit('admin.dispute_create', { sample: true });
+        this.refreshAll();
+      },
+
+      togglePromo(code) {
+        const list = DB.read(DB.KEYS.promos, []);
+        const p = list.find(x => x.code === code);
+        if (p) { p.active = !p.active; DB.write(DB.KEYS.promos, list); DB.audit('admin.promo_toggle', { code, active: p.active }); }
+        this.refreshAll();
+      },
+
+      addPromo() {
+        const code = String(this.newPromo.code).trim().toUpperCase();
+        if (!code) return alert('Enter a promo code.');
+        const list = DB.read(DB.KEYS.promos, []);
+        if (list.some(p => p.code === code)) return alert('Code already exists.');
+        list.push({ code, type: this.newPromo.type, value: Number(this.newPromo.value), minSubtotal: Number(this.newPromo.minSubtotal), active: true });
+        DB.write(DB.KEYS.promos, list);
+        DB.audit('admin.promo_add', { code });
+        this.newPromo = { code: '', type: 'flat', value: 50, minSubtotal: 200 };
+        this.refreshAll();
+      },
+
+      runCalc() {
+        const { subtotal, deliveryFee, vehicleType, ridesToday } = this.calc;
+        let riderRate;
+        if (vehicleType === 'car' || vehicleType === 'taxi') {
+          riderRate = DB.COMMISSION.TAXI;
+        } else {
+          riderRate = ridesToday >= DB.COMMISSION.RIDER_QUOTA_THRESHOLD
+            ? DB.COMMISSION.RIDER_QUOTA
+            : DB.COMMISSION.DELIVERY;
+        }
+        const merchantCut = Math.round(subtotal * DB.COMMISSION.MERCHANT * 100) / 100;
+        const riderCut = Math.round((deliveryFee || subtotal) * riderRate * 100) / 100;
+        this.calcResult = {
+          merchantRate: DB.COMMISSION.MERCHANT,
+          merchantCut,
+          riderRate,
+          riderCut,
+          platformTotal: merchantCut + riderCut,
+          merchantNet: Math.round((subtotal - merchantCut) * 100) / 100,
+          riderNet: Math.round((deliveryFee - riderCut) * 100) / 100,
+        };
+      },
+
+      exportAudit() {
+        const data = DB.read(DB.KEYS.audit, []);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'higala_audit_' + new Date().toISOString().slice(0, 10) + '.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        DB.audit('admin.export_audit', { count: data.length });
+        this.auditLogs = DB.read(DB.KEYS.audit, []);
+      },
+
+      logout() {
+        if (!confirm('Logout from Command Tower?')) return;
+        DB.logout();
+        DB.audit('admin.logout', { userId: this.session?.userId });
+        window.location.href = '/index.html';
+      },
+
+      initMap() {
+        if (this.map) { this.map.invalidateSize(); this.updateMapMarkers(); return; }
+        const center = DB.CDO_CENTER;
+        this.map = L.map('map', { zoomControl: true }).setView([center.lat, center.lng], 13);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; OSM &copy; CARTO',
+          maxZoom: 19,
+        }).addTo(this.map);
+        this.markersLayer = L.layerGroup().addTo(this.map);
+        this.drawGeofence();
+        this.updateMapMarkers();
+        setTimeout(() => this.map.invalidateSize(), 200);
+      },
+
+      drawGeofence() {
+        if (this.geofenceLayer) { this.map.removeLayer(this.geofenceLayer); this.geofenceLayer = null; }
+        if (!this.showGeofence) return;
+        const bounds = [[8.42, 124.58], [8.54, 124.70]];
+        this.geofenceLayer = L.rectangle(bounds, {
+          color: '#d97706',
+          weight: 2,
+          fillColor: '#f59e0b',
+          fillOpacity: 0.08,
+          dashArray: '6 4',
+        }).addTo(this.map);
+        this.geofenceLayer.bindPopup('<b>CDO Service Geofence</b><br>Orders outside this zone are flagged.');
+      },
+
+      toggleGeofence() {
+        if (!this.map) return;
+        this.drawGeofence();
+      },
+
+      updateMapMarkers() {
+        if (!this.markersLayer) return;
+        this.markersLayer.clearLayers();
+        const activeStatuses = ['pending', 'accepted', 'preparing', 'picked_up', 'in_transit'];
+        this.orders.forEach(o => {
+          let show = false;
+          if (this.mapStatusFilter === 'all') show = true;
+          else if (this.mapStatusFilter === 'pending') show = o.status === 'pending';
+          else if (this.mapStatusFilter === 'active') show = activeStatuses.includes(o.status);
+          else if (this.mapStatusFilter === 'completed') show = o.status === 'completed';
+          if (!show) return;
+          const lat = o.dropoff?.lat || o.pickup?.lat || DB.CDO_CENTER.lat + (Math.random() - 0.5) * 0.04;
+          const lng = o.dropoff?.lng || o.pickup?.lng || DB.CDO_CENTER.lng + (Math.random() - 0.5) * 0.04;
+          const color = o.status === 'completed' ? '#10b981' : o.status === 'pending' ? '#f59e0b' : '#38bdf8';
+          const icon = L.divIcon({
+            className: '',
+            html: '<div style="width:12px;height:12px;border-radius:50%;background:' + color + ';border:2px solid #fff;box-shadow:0 0 6px ' + color + '"></div>',
+            iconSize: [12, 12],
+            iconAnchor: [6, 6],
+          });
+          L.marker([lat, lng], { icon }).addTo(this.markersLayer)
+            .bindPopup('<b>' + o.id.slice(-8) + '</b><br>' + o.service + ' · ' + o.status + '<br>' + DB.money(o.total));
+        });
+        this.drivers.filter(d => d.online).forEach(d => {
+          const icon = L.divIcon({
+            className: '',
+            html: '<div style="width:14px;height:14px;border-radius:50%;background:#d97706;border:2px solid #fbbf24;box-shadow:0 0 8px #d97706"></div>',
+            iconSize: [14, 14],
+            iconAnchor: [7, 7],
+          });
+          L.marker([d.lat || DB.CDO_CENTER.lat, d.lng || DB.CDO_CENTER.lng], { icon }).addTo(this.markersLayer)
+            .bindPopup('<b>' + d.name + '</b><br>' + d.vehicleType + ' · ONLINE');
+        });
+      },
+    };
+  }
+  </script>
+</body>
+</html>

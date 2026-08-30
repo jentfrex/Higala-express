@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ceb">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - Driver Application Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            background: linear-gradient(135deg, #fdf6e2 0%, #fef3c7 35%, #fde68a 70%, #fcd34d 100%);
+            color: #451a03; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            min-height: 100vh;
+        }
+        .command-card { 
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(16px); 
+            border: 1px solid rgba(217, 119, 6, 0.3); 
+            box-shadow: 0 10px 30px -5px rgba(217, 119, 6, 0.15);
+        }
+        .command-card-inner { 
+            background: rgba(254, 243, 199, 0.6); 
+            border: 1px solid rgba(217, 119, 6, 0.2); 
+        }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #fef3c7; }
+        ::-webkit-scrollbar-thumb { background: #d97706; border-radius: 8px; }
+    </style>
+</head>
+<body class="p-4 sm:p-6 text-xs sm:text-sm flex items-center justify-center">
+
+    <div class="max-w-3xl w-full space-y-6">
+        
+        <!-- HEADER -->
+        <div class="command-card rounded-3xl p-6 text-center space-y-2 border-t-4 border-amber-600 shadow-xl">
+            <div class="w-12 h-12 bg-amber-600 text-white font-black flex items-center justify-center rounded-2xl text-xl mx-auto shadow-md">H</div>
+            <h1 class="text-xl font-black text-amber-900 tracking-wider">HIGALA EXPRESS FLEET</h1>
+            <p class="text-stone-700 text-xs font-medium">Magsugod na ta sa hapsay ug bulahang panaw sa paghatud diri sa CDO! 🌟</p>
+        </div>
+
+        <!-- ADMIN QUICK LOGIN BAR -->
+        <div class="command-card rounded-2xl p-4 border border-amber-500 bg-amber-100/70 shadow-md flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div>
+                <span class="font-black text-amber-900 text-xs block">🔐 ADMIN QUICK BYPASS ACCESS</span>
+                <span class="text-[11px] text-stone-700">Kung ikaw ang Admin, i-click kini para ma-auto-fill ang imong Admin ID nga walay requirements!</span>
+            </div>
+            <button type="button" onclick="openAdminModal()" class="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-xl text-xs shadow transition whitespace-nowrap">
+                ⚡ Admin Secure Login
+            </button>
+        </div>
+
+        <!-- APPLICATION FORM -->
+        <div class="command-card rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl">
+            <div class="border-b border-amber-300 pb-3">
+                <h2 class="text-xs font-black tracking-wider text-amber-900 uppercase">🚀 Pormularyo sa Pag-apil sa Higala Fleet</h2>
+                <p class="text-[11px] text-stone-600 mt-0.5">Isulat ang imong mga detalye aron mahimo kang opisyal ug bililhong partner sa atong delivery network.</p>
+            </div>
+
+            <form onsubmit="submitApplication(event)" class="space-y-5 text-xs">
+                
+                <!-- SECTION 1: PERSONAL INFO -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-amber-900 flex items-center gap-1.5"><span>👤</span> 1. Personal & Contact Information</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Tibuok Ngalan:</label>
+                            <input type="text" id="app-name" required placeholder="Juanito D. Perez" class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Mobile / GCash Number:</label>
+                            <input type="text" id="app-phone" required placeholder="0917xxxxxxx" class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Current Address sa CDO:</label>
+                            <input type="text" id="app-address" required placeholder="Cogon, Carmen, etc." class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 2: EMERGENCY CONTACT -->
+                <div class="space-y-3 pt-3 border-t border-amber-300">
+                    <h3 class="font-bold text-amber-900 flex items-center gap-1.5"><span>🛡️</span> 2. Kaluwasan ug In Case of Emergency (ICE)</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Ngalan sa Pamilya / Contact Person:</label>
+                            <input type="text" id="app-emergency-name" required placeholder="Maria Perez (Asawa/Pamilya)" class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Numero sa Emergency Contact:</label>
+                            <input type="text" id="app-emergency-phone" required placeholder="0918xxxxxxx" class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 3: VEHICLE & LEGAL -->
+                <div class="space-y-3 pt-3 border-t border-amber-300">
+                    <h3 class="font-bold text-amber-900 flex items-center gap-1.5"><span>🚚</span> 3. Sasakyan & Legal Compliance</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Klase sa Sasakyan:</label>
+                            <select id="app-vehicle" class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                                <option>Multicab (Bulky Sacks / Bugas)</option>
+                                <option>Motorcycle Express (Delivery)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Driver's License / Admin ID:</label>
+                            <input type="text" id="app-license" required placeholder="L01-XX-XXXXXX" class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Lisensya Expiry Date:</label>
+                            <input type="date" id="app-expiry" required class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Vehicle Model / Plaka o Status:</label>
+                            <input type="text" id="app-vehicle-model" required placeholder="Toyota Multicab / ABC-1234" class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600">
+                        </div>
+                        <div>
+                            <label class="block text-stone-700 font-semibold mb-1">Upload Clearance & Lisensya (Opsyonal kung Admin):</label>
+                            <input type="file" id="app-files" multiple class="w-full command-card-inner text-amber-950 rounded-xl p-2 text-[11px] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-amber-600 file:text-white file:font-bold">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 4: APPLICATION LETTER -->
+                <div class="space-y-3 pt-3 border-t border-amber-300">
+                    <h3 class="font-bold text-amber-900 flex items-center gap-1.5"><span>✍️</span> 4. Imong Application Letter & Panan-aw</h3>
+                    <div>
+                        <label class="block text-stone-700 font-semibold mb-1">Ipakita ang imong kadasig sa pag-apil:</label>
+                        <textarea id="app-letter" rows="3" required placeholder="Supreme Admin Access - Direct Fleet Integration..." class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600"></textarea>
+                    </div>
+                </div>
+
+                <!-- SECTION 5: MOTIVATING AGREEMENT & SUBMIT -->
+                <div class="pt-3 border-t border-amber-300 space-y-4">
+                    <label class="flex items-start gap-2.5 cursor-pointer text-stone-800 bg-amber-50/80 p-3 rounded-xl border border-amber-200">
+                        <input type="checkbox" id="app-agree" required class="w-4 h-4 text-amber-600 rounded mt-0.5">
+                        <span class="text-[11px] leading-relaxed">Nagpasalig ako sa paghatag og matinud-anon, limpyo, ug malipayon nga serbisyo sa matag pasahero ug kliyente, ug mosunod sa mga lagda sa kaluwasan sa Higala Express.</span>
+                    </label>
+
+                    <button type="submit" class="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-2xl text-xs shadow-xl transition tracking-wider">
+                        ISUMITE ANG APLIKASYON PARA SA REVIEW SA ADMIN 🚀
+                    </button>
+                </div>
+
+            </form>
+        </div>
+
+    </div>
+
+    <!-- CUSTOM SECURE ADMIN MODAL -->
+    <div id="admin-modal" class="fixed inset-0 bg-stone-900/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="command-card max-w-sm w-full rounded-3xl p-6 space-y-4 shadow-2xl border border-amber-500">
+            <div class="text-center space-y-1">
+                <div class="w-10 h-10 bg-amber-600 text-white font-bold rounded-xl flex items-center justify-center mx-auto text-base">🔐</div>
+                <h3 class="font-black text-amber-900 text-sm">Admin Security Verification</h3>
+                <p class="text-[11px] text-stone-600">Isulat ang imong password para ma-activate ang VIP Admin Driver Profile.</p>
+            </div>
+            
+            <div class="space-y-2">
+                <input type="password" id="admin-pass-input" placeholder="Isulat ang password..." class="w-full command-card-inner text-amber-950 rounded-xl p-3 outline-none focus:ring-2 focus:ring-amber-600 text-center font-bold tracking-widest">
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="closeAdminModal()" class="w-1/2 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold rounded-xl text-xs transition">
+                    Kanselahon
+                </button>
+                <button type="button" onclick="verifyAdminPassword()" class="w-1/2 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition shadow">
+                    I-verify
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function openAdminModal() {
+        document.getElementById('admin-modal').classList.remove('hidden');
+        document.getElementById('admin-modal').classList.add('flex');
+        document.getElementById('admin-pass-input').value = "";
+        document.getElementById('admin-pass-input').focus();
+    }
+
+    function closeAdminModal() {
+        document.getElementById('admin-modal').classList.remove('flex');
+        document.getElementById('admin-modal').classList.add('hidden');
+    }
+
+    function verifyAdminPassword() {
+        let pass = document.getElementById('admin-pass-input').value;
+        if (pass === "101391@Jent") {
+            closeAdminModal();
+            document.getElementById('app-name').value = "Admin (VIP Fleet Master)";
+            document.getElementById('app-phone').value = "0917-ADMIN-CDO";
+            document.getElementById('app-address').value = "Higala Command Center, CDO";
+            document.getElementById('app-emergency-name').value = "System Security";
+            document.getElementById('app-emergency-phone').value = "911-HIGALA";
+            document.getElementById('app-license').value = "ADMIN-ID-001";
+            document.getElementById('app-expiry').value = "2030-12-31";
+            document.getElementById('app-vehicle-model').value = "Command Multicab (VIP)";
+            document.getElementById('app-letter').value = "Direct Admin Fleet Integration. Handa nang mo-manage ug mohatag og hapsay nga serbisyo sa CDO.";
+            document.getElementById('app-agree').checked = true;
+            alert("Malampusong na-load ang Admin profile nang wala'y samok nga ngalan!");
+        } else {
+            alert("Sayop ang imong password, migo! Sulayi pag-usab.");
+            document.getElementById('admin-pass-input').value = "";
+            document.getElementById('admin-pass-input').focus();
+        }
+    }
+
+    function submitApplication(e) {
+        e.preventDefault();
+        let name = document.getElementById('app-name').value;
+        alert(`Malampusong na-register ang ${name} isip opisyal nga Admin driver sa sistema!`);
+        e.target.reset();
+    }
+    </script>
+</body>
+</html>

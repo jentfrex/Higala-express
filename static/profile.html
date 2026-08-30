@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala SuperApp - CDO</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ========================================== -->
+    <!-- LOGIN / REGISTER OVERLAY                   -->
+    <!-- ========================================== -->
+    <div id="loginOverlay" style="position:fixed; inset:0; background:#f4f6f8; z-index:50000; display:flex; align-items:center; justify-content:center; transition:opacity 0.4s ease;">
+        <div style="background:white; width:90%; max-width:400px; padding:30px; border-radius:20px; box-shadow:0 15px 35px rgba(0,0,0,0.1); font-family:system-ui;">
+            <div style="text-align:center; margin-bottom:24px;">
+                <h2 style="font-size:22px; font-weight:800; color:#1a1a1a; margin:0 0 6px 0;">🌟 Higala SuperApp</h2>
+                <p style="font-size:13px; color:#6c757d; margin:0;">Cagayan de Oro's Ultimate On-Demand Service</p>
+            </div>
+
+            <div id="loginErrorMsg" style="display:none; background:#f8d7da; color:#721c24; padding:10px 14px; border-radius:8px; font-size:12px; margin-bottom:16px; font-weight:600;"></div>
+
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <!-- Register-only fields -->
+                <div id="registerNameField" style="display:none;">
+                    <label style="font-size:11px; font-weight:700; color:#495057;">Full Name</label>
+                    <input type="text" id="registerName" placeholder="Higala Juan" style="width:100%; padding:10px; border:1px solid #ced4da; border-radius:8px; font-size:13px; margin-top:4px;">
+                </div>
+
+                <div id="registerPhoneField" style="display:none;">
+                    <label style="font-size:11px; font-weight:700; color:#495057;">Mobile Number</label>
+                    <input type="text" id="registerPhone" placeholder="0917XXXXXXX" style="width:100%; padding:10px; border:1px solid #ced4da; border-radius:8px; font-size:13px; margin-top:4px;">
+                </div>
+
+                <div>
+                    <label style="font-size:11px; font-weight:700; color:#495057;">Email Address</label>
+                    <input type="email" id="loginEmail" placeholder="user@cdo.ph" style="width:100%; padding:10px; border:1px solid #ced4da; border-radius:8px; font-size:13px; margin-top:4px;">
+                </div>
+
+                <div>
+                    <label style="font-size:11px; font-weight:700; color:#495057;">Password</label>
+                    <input type="password" id="loginPass" placeholder="••••••••" style="width:100%; padding:10px; border:1px solid #ced4da; border-radius:8px; font-size:13px; margin-top:4px;">
+                </div>
+
+                <button id="authSubmitBtn" onclick="handleAuthSubmit()" style="width:100%; padding:12px; background:#FF6600; color:white; border:none; border-radius:8px; font-weight:800; font-size:14px; cursor:pointer; margin-top:6px;">Log In</button>
+
+                <div style="text-align:center; margin-top:10px;">
+                    <span id="authSwitchLink" onclick="toggleAuthMode()" style="font-size:12px; color:#007bff; cursor:pointer; font-weight:600;">New here? Create an account</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MAIN APPLICATION WRAPPER                   -->
+    <!-- ========================================== -->
+    <div id="mainAppWrapper" style="display:none; flex-direction:column; height:100vh; font-family:system-ui;">
+        
+        <!-- Top App Header -->
+        <header style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#fff; border-bottom:1px solid #e9ecef; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <h1 style="font-size:18px; font-weight:900; color:#FF6600; margin:0;">HigalaApp</h1>
+                <span id="headerUserName" style="font-size:13px; font-weight:700; color:#333;">--</span>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px;">
+                <!-- SOS Emergency Button -->
+                <button onclick="triggerSOS()" style="background:#dc3545; color:white; border:none; padding:6px 12px; border-radius:20px; font-size:11px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                    🚨 SOS
+                </button>
+
+                <!-- Profile Settings Button -->
+                <button onclick="openProfileModal()" style="background:#f1f3f5; border:1px solid #ced4da; padding:6px 14px; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; color:#333;">
+                    ⚙️ Profile
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area / Dashboard -->
+        <main style="flex:1; padding:20px; background:#f8f9fa; overflow-y:auto;">
+            <div style="margin-bottom:16px;">
+                <h2 id="sectionTitle" style="font-size:16px; font-weight:800; color:#1a1a1a; margin:0 0 4px 0;">🚗 Express Transport & Ride Hailing</h2>
+                <p id="sectionSub" style="font-size:12px; color:#6c757d; margin:0;">Book fast and safe motorcycle or car rides around Cagayan de Oro.</p>
+            </div>
+
+            <!-- Service Switcher Tabs -->
+            <div style="display:flex; gap:8px; margin-bottom:16px; overflow-x:auto; padding-bottom:4px;">
+                <button class="service-tab active" onclick="switchService('Rides', this)" style="padding:8px 16px; background:white; border:1px solid #dee2e6; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;">Rides</button>
+                <button class="service-tab" onclick="switchService('Food', this)" style="padding:8px 16px; background:white; border:1px solid #dee2e6; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;">Food</button>
+                <button class="service-tab" onclick="switchService('Grocery', this)" style="padding:8px 16px; background:white; border:1px solid #dee2e6; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;">Grocery</button>
+                <button class="service-tab" onclick="switchService('Pharmacy', this)" style="padding:8px 16px; background:white; border:1px solid #dee2e6; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;">Pharmacy</button>
+                <button class="service-tab" onclick="switchService('Courier', this)" style="padding:8px 16px; background:white; border:1px solid #dee2e6; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;">Courier</button>
+            </div>
+
+            <!-- Dynamic Service Module Container -->
+            <div id="serviceModuleContainer" style="background:white; border-radius:12px; padding:16px; border:1px solid #dee2e6; min-height:300px;">
+                <!-- Content gets dynamically loaded here by profile.js / services script -->
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = "https://api.higala.ph"; // Update to your backend domain if necessary
+    </script>
+    <script src="profile.js"></script>
+</body>
+</html>

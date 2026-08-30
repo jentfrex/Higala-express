@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f59e0b">
+  <title>Higala Express — Customer</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <script src="/js/higala-db.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak]{display:none!important}
+    body{font-family:"DM Sans",system-ui,sans-serif}
+    .liquid-header{background:linear-gradient(135deg,rgba(217,119,6,.9),rgba(245,158,11,.7),rgba(254,243,199,.85));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.45)}
+    .glass{background:rgba(255,255,255,.9);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.6)}
+    #map{height:22rem;width:100%;min-height:280px;z-index:0}
+    .scrollbar-none::-webkit-scrollbar{display:none}.scrollbar-none{scrollbar-width:none}
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased" x-data="customerApp()" x-init="init()" x-cloak>
+
+  <!-- Auth gate -->
+  <div x-show="showAuth" class="fixed inset-0 z-[9000] flex items-center justify-center bg-gradient-to-br from-slate-900 via-amber-950 to-amber-700 p-4">
+    <div class="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl">
+      <div class="mb-4 flex items-center gap-3">
+        <div class="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-lg font-black text-white">H</div>
+        <div><h1 class="font-[Manrope] text-2xl font-extrabold">Higala Express</h1><p class="text-xs font-semibold text-amber-700">Customer Login</p></div>
+      </div>
+      <p x-show="authError" x-text="authError" class="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"></p>
+      <form @submit.prevent="login()" class="space-y-3">
+        <input x-model="authForm.email" type="email" required placeholder="Email" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+        <input x-model="authForm.password" type="password" required placeholder="Password" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+        <button type="submit" class="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 py-3 text-sm font-extrabold text-amber-950">Log In</button>
+        <button type="button" @click="location.href='index.html'" class="w-full text-xs font-bold text-amber-700">Create account on portal →</button>
+      </form>
+      <p class="mt-3 text-[11px] text-slate-500">Demo: customer@higala.ph / customer123</p>
+    </div>
+  </div>
+
+  <div x-show="!showAuth">
+    <header class="liquid-header sticky top-0 z-[1000]">
+      <div class="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
+        <div class="flex items-center gap-2.5">
+          <div class="grid h-11 w-11 place-items-center rounded-2xl bg-white/30 text-base font-black text-amber-950 shadow">H</div>
+          <div class="hidden sm:block"><div class="font-[Manrope] text-lg font-extrabold text-amber-950">Higala Express</div><div class="text-[10px] font-bold uppercase text-amber-900/80">Cagayan de Oro</div></div>
+        </div>
+        <div class="relative hidden flex-1 md:block max-w-lg">
+          <input x-model="search" @input="renderItems()" type="search" placeholder="Search…" class="w-full rounded-2xl border border-white/50 bg-white/70 py-2.5 pl-10 pr-3 text-sm outline-none">
+          <span class="absolute left-3 top-2.5 text-slate-400">⌕</span>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <button @click="walletOpen=true" class="hidden rounded-2xl border border-white/50 bg-white/70 px-3 py-2 text-[11px] font-extrabold sm:block" x-text="'Wallet '+money(wallet.balance)"></button>
+          <button @click="triggerSOS()" class="rounded-2xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs font-extrabold text-rose-700" title="Emergency SOS">SOS</button>
+          <button @click="cartOpen=true" class="relative grid h-11 w-11 place-items-center rounded-2xl border border-white/50 bg-white/70 text-lg">🛒
+            <span x-show="cartCount>0" x-text="cartCount" class="absolute -right-1 -top-1 grid min-w-[18px] place-items-center rounded-full bg-slate-900 px-1 text-[10px] font-bold text-white"></span>
+          </button>
+          <button @click="profileOpen=true" class="flex h-11 items-center gap-2 rounded-2xl border border-white/50 bg-white/70 py-1 pl-1 pr-2">
+            <img :src="user.avatar" class="h-9 w-9 rounded-xl object-cover" alt="">
+            <span class="hidden text-xs font-extrabold lg:block" x-text="user.name"></span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 py-5 sm:px-6">
+      <section class="mb-5 rounded-3xl bg-gradient-to-br from-slate-900 via-amber-950 to-amber-700 p-6 text-white shadow-xl">
+        <h1 class="font-[Manrope] text-3xl font-extrabold" x-text="greeting"></h1>
+        <p class="mt-2 text-sm text-amber-50/90">Book rides, order food, groceries, pharmacy &amp; courier across CDO.</p>
+      </section>
+
+      <nav class="mb-5 flex gap-2 overflow-x-auto scrollbar-none">
+        <template x-for="s in services" :key="s"><button @click="setService(s)" :class="service===s?'bg-slate-900 text-white':'bg-white text-slate-600 border'" class="shrink-0 rounded-full border px-4 py-2 text-xs font-extrabold" x-text="s"></button></template>
+      </nav>
+
+      <div class="grid gap-5 lg:grid-cols-[1fr_24rem]">
+        <section class="glass rounded-3xl p-4 shadow-sm sm:p-5">
+          <h2 class="font-[Manrope] text-xl font-extrabold" x-text="service"></h2>
+          <div x-show="categories.length>1" class="my-3 flex gap-2 overflow-x-auto scrollbar-none">
+            <template x-for="c in categories" :key="c"><button @click="category=c;renderItems()" :class="category===c?'bg-amber-100 text-amber-900 border-amber-300':'bg-white border-slate-200'" class="shrink-0 rounded-full border px-3 py-1 text-xs font-bold" x-text="c"></button></template>
+          </div>
+          <div x-html="itemsHtml" class="mt-2"></div>
+          <div class="mt-4 rounded-2xl border bg-slate-50 p-4">
+            <p class="text-xs text-slate-600" x-html="farePreview"></p>
+            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+              <input x-model="scheduledAt" type="datetime-local" class="rounded-xl border px-3 py-2 text-xs" title="Schedule delivery">
+              <button @click="cartOpen=true" class="rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 py-2.5 text-sm font-extrabold text-amber-950">Open Cart</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="glass rounded-3xl shadow-sm lg:sticky lg:top-[5.5rem]">
+          <div class="border-b px-4 py-3 flex justify-between"><span class="text-sm font-extrabold">📍 Map &amp; Locations</span><span class="text-[10px] font-bold text-emerald-600" x-text="mapStatus"></span></div>
+
+          <!-- Pickup Location Input -->
+          <div class="px-3 pt-3 pb-1">
+            <div class="rounded-xl border-2 border-blue-300 bg-blue-50/60 p-2.5">
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="w-5 h-5 rounded-full bg-blue-500 text-white text-[10px] font-bold grid place-items-center shrink-0">A</span>
+                <span class="text-[11px] font-extrabold text-blue-700 uppercase tracking-wide">Pickup Location</span>
+              </div>
+              <input x-model="pickupInput" type="text" placeholder="Type pickup address or use GPS…" class="w-full rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-400">
+              <div class="mt-1.5 flex items-center justify-between">
+                <span class="text-[10px] text-blue-600 truncate" x-text="pickup.address || 'CDO Hub (default pickup)'"></span>
+                <button @click="useGPS()" class="shrink-0 rounded-lg bg-blue-500 px-2 py-1 text-[10px] font-bold text-white hover:bg-blue-600 transition">◎ GPS</button>
+              </div>
+            </div>
+          </div>
+          <!-- Destination Search Input -->
+          <div class="relative px-3 pt-1">
+            <div class="rounded-xl border-2 border-amber-300 bg-amber-50/60 p-2.5">
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold grid place-items-center shrink-0">B</span>
+                <span class="text-[11px] font-extrabold text-amber-700 uppercase tracking-wide">Destination</span>
+              </div>
+              <div class="relative">
+                <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 text-xs">🔍</span>
+                <input x-model="geoQuery" @input="searchPlaces()" @keydown.enter.prevent="searchPlaces(true)" type="search" placeholder="Search street, mall, barangay in CDO…" class="w-full rounded-lg border border-amber-200 bg-white pl-8 pr-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400 shadow-sm">
+              </div>
+            </div>
+            <div x-show="geoResults.length" x-transition class="absolute left-3 right-3 z-[800] mt-1 max-h-48 overflow-y-auto rounded-xl border bg-white shadow-xl">
+              <template x-for="r in geoResults" :key="r.place_id">
+                <button type="button" @click="selectPlace(r)" class="flex items-center gap-2 w-full px-3 py-2.5 text-left text-[11px] hover:bg-amber-50 border-b border-slate-100 last:border-0">
+                  <span class="text-amber-500 shrink-0">📍</span>
+                  <span class="truncate" x-text="r.display_name"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Map -->
+          <div id="map" class="mt-2"></div>
+
+          <!-- Map Controls -->
+          <div class="grid grid-cols-2 gap-2 p-3">
+            <button @click="useGPS()" class="rounded-xl border border-blue-200 bg-blue-50 py-2 text-[11px] font-extrabold text-blue-700 hover:bg-blue-100 transition">◎ Set Pickup (GPS)</button>
+            <button @click="clearPin()" class="rounded-xl border border-amber-200 bg-amber-50 py-2 text-[11px] font-extrabold text-amber-700 hover:bg-amber-100 transition">✕ Clear Destination</button>
+          </div>
+
+          <!-- Quick Landmarks -->
+          <div class="flex gap-1.5 overflow-x-auto px-3 pb-2 scrollbar-none">
+            <span class="shrink-0 self-center text-[10px] font-bold text-slate-400">Quick:</span>
+            <template x-for="lm in landmarks" :key="lm.name"><button @click="pinLandmark(lm)" class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-100 transition" x-text="lm.name"></button></template>
+          </div>
+
+          <!-- Structured Address -->
+          <div class="mx-3 mb-3 space-y-2 rounded-xl border bg-slate-50 p-3">
+            <div class="text-[10px] font-bold uppercase text-slate-500 flex items-center justify-between">
+              <span>Structured address</span>
+              <span class="text-amber-600 font-bold">CDO Precise</span>
+            </div>
+            <!-- Barangay: Type or Select -->
+            <div class="relative">
+              <input x-model="address.barangay" @input="barangayFilter = address.barangay; showBarangayList = true" @focus="showBarangayList = true" @click.away="showBarangayList = false" type="text" placeholder="Type or select barangay…" class="w-full rounded-lg border px-2 py-1.5 text-xs bg-white outline-none focus:ring-2 focus:ring-amber-400">
+              <div x-show="showBarangayList && barangayFilter.length > 0" x-transition class="absolute z-50 mt-1 w-full max-h-36 overflow-y-auto rounded-lg border bg-white shadow-lg">
+                <template x-for="b in filteredBarangays" :key="'brgy-'+b">
+                  <button type="button" @click="address.barangay = b; showBarangayList = false" class="w-full px-2.5 py-1.5 text-left text-xs hover:bg-amber-50" x-text="b"></button>
+                </template>
+                <div x-show="filteredBarangays.length === 0" class="px-2.5 py-2 text-[10px] text-slate-400">Press Enter to use custom barangay</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <input x-model="address.zone" placeholder="Zone / Purok" class="w-full rounded-lg border px-2 py-1.5 text-xs">
+              <input x-model="address.house" placeholder="House / Unit #" class="w-full rounded-lg border px-2 py-1.5 text-xs">
+            </div>
+            <input x-model="address.street" placeholder="Street / building / landmark" class="w-full rounded-lg border px-2 py-1.5 text-xs">
+            <div class="flex items-center gap-1.5 mt-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span class="text-[10px] font-semibold text-slate-500" x-text="formattedAddress"></span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <!-- Cart drawer -->
+  <div x-show="cartOpen" class="fixed inset-0 z-[5000]" @keydown.escape.window="cartOpen=false">
+    <div @click="cartOpen=false" class="absolute inset-0 bg-slate-900/45"></div>
+    <aside class="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
+      <div class="flex items-center justify-between border-b px-4 py-4"><h2 class="font-[Manrope] text-lg font-extrabold">Your Cart</h2><button @click="cartOpen=false" class="rounded-xl bg-slate-100 px-3 py-1 font-bold">✕</button></div>
+      <div class="flex-1 overflow-y-auto overflow-x-hidden px-3">
+        <template x-if="!cart.length"><p class="py-16 text-center text-sm text-slate-500">Cart is empty.</p></template>
+        <template x-for="item in cart" :key="item.uid">
+          <div class="flex gap-2.5 border-b py-3">
+            <img :src="item.imageUrl" class="h-12 w-12 shrink-0 rounded-lg object-cover bg-slate-100" alt="">
+            <div class="min-w-0 flex-1">
+              <h4 class="truncate text-xs font-extrabold" x-text="item.name"></h4>
+              <input x-model="item.notes" placeholder="Special instructions…" class="mt-1 w-full rounded-lg border px-2 py-1 text-[10px]">
+              <div class="mt-1.5 flex items-center gap-1.5">
+                <button @click="changeQty(item.uid,-1)" class="grid h-6 w-6 place-items-center rounded border text-xs font-bold">−</button>
+                <span class="text-xs font-bold" x-text="item.quantity"></span>
+                <button @click="changeQty(item.uid,1)" class="grid h-6 w-6 place-items-center rounded border text-xs font-bold">+</button>
+              </div>
+            </div>
+            <div class="shrink-0 text-xs font-extrabold" x-text="money(item.price*item.quantity)"></div>
+          </div>
+        </template>
+      </div>
+      <div class="border-t p-4 space-y-2 text-xs">
+        <div class="flex gap-2"><input x-model="promoCode" placeholder="Promo (HIGALA50)" class="flex-1 rounded-xl border px-3 py-2"><button @click="applyPromo()" class="rounded-xl border px-3 font-bold">Apply</button></div>
+        <div class="flex justify-between"><span>Subtotal</span><strong x-text="money(subtotal)"></strong></div>
+        <div class="flex justify-between"><span>Discount</span><strong x-text="money(discount)"></strong></div>
+        <div class="flex justify-between"><span>Delivery</span><strong x-text="money(deliveryFee)"></strong></div>
+        <div class="flex justify-between text-base font-extrabold"><span>Total</span><strong x-text="money(total)"></strong></div>
+        <div>
+          <label class="text-[10px] font-bold uppercase text-slate-500">Payment</label>
+          <select x-model="paymentMethod" class="mt-1 w-full rounded-xl border px-3 py-2 text-sm">
+            <option value="COD">Cash on Delivery</option>
+            <option value="GCash">GCash</option>
+            <option value="Maya">Maya</option>
+            <option value="Wallet">Higala Wallet</option>
+          </select>
+        </div>
+        <button @click="checkout()" class="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 py-3 font-extrabold text-amber-950">Place Order</button>
+        <button @click="exportReceipt()" class="w-full rounded-xl border py-2 font-bold text-slate-600">Export Receipt</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Profile -->
+  <div x-show="profileOpen" class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/55 p-4" @click.self="profileOpen=false">
+    <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5" @click.stop>
+      <h2 class="font-[Manrope] text-lg font-extrabold">My Profile</h2>
+      <div class="mt-4 space-y-3 text-sm">
+        <!-- Enhanced Native Profile Image Picker -->
+        <div>
+          <label class="text-[10px] font-bold uppercase text-slate-500">Profile photo</label>
+          <div class="mt-1">
+            <div class="relative inline-block">
+              <input type="file" accept="image/*" @change="handleAvatarUpload($event)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" aria-label="Upload profile photo">
+              <div class="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-amber-400/40 bg-amber-50/50 hover:border-amber-500 hover:bg-amber-50 transition-all cursor-pointer">
+                <img :src="profileDraft.avatar" class="h-14 w-14 rounded-xl object-cover bg-slate-100 shrink-0" alt="Avatar">
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-bold text-amber-700">Click to change photo</p>
+                  <p class="text-[10px] text-slate-500">JPG, PNG • Instant preview</p>
+                </div>
+                <span class="text-lg text-amber-500">📷</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div><label class="text-[10px] font-bold uppercase">Full name</label><input x-model="profileDraft.name" class="mt-1 w-full rounded-xl border px-3 py-2"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-[10px] font-bold uppercase">Phone</label><input x-model="profileDraft.phone" class="mt-1 w-full rounded-xl border px-3 py-2"></div>
+          <div><label class="text-[10px] font-bold uppercase">Age</label><input x-model="profileDraft.age" type="number" class="mt-1 w-full rounded-xl border px-3 py-2"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-[10px] font-bold uppercase">Gender</label><select x-model="profileDraft.gender" class="mt-1 w-full rounded-xl border px-3 py-2"><option>Male</option><option>Female</option><option>Prefer not to say</option></select></div>
+          <div><label class="text-[10px] font-bold uppercase">Barangay</label><input x-model="profileDraft.barangay" type="text" list="customer-barangay-list" placeholder="Type or select barangay…" class="mt-1 w-full rounded-xl border px-3 py-2"><datalist id="customer-barangay-list"><template x-for="b in barangays" :key="'cdatalist-'+b"><option :value="b"></option></template></datalist></div>
+        </div>
+        <button @click="saveProfile()" class="w-full rounded-xl bg-amber-500 py-3 font-extrabold text-white">Save Profile</button>
+        <button @click="viewOrders()" class="w-full rounded-xl border py-2 font-bold">Order History</button>
+        <button @click="logout()" class="w-full rounded-xl bg-slate-900 py-3 font-extrabold text-white">Log Out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wallet modal -->
+  <div x-show="walletOpen" class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/55 p-4" @click.self="walletOpen=false">
+    <div class="w-full max-w-sm rounded-3xl bg-white p-5" @click.stop>
+      <h2 class="font-extrabold">Higala Wallet</h2>
+      <p class="mt-2 text-2xl font-extrabold text-amber-700" x-text="money(wallet.balance)"></p>
+      <input x-model.number="topUpAmount" type="number" min="50" step="50" class="mt-3 w-full rounded-xl border px-3 py-2" placeholder="Amount">
+      <select x-model="topUpMethod" class="mt-2 w-full rounded-xl border px-3 py-2"><option>GCash</option><option>Maya</option><option>Bank</option></select>
+      <button @click="topUpWallet()" class="mt-3 w-full rounded-xl bg-amber-500 py-3 font-extrabold text-white">Top Up</button>
+    </div>
+  </div>
+
+  <!-- Courier multi-stop modal -->
+  <div x-show="courierOpen" class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/55 p-4" @click.self="courierOpen=false">
+    <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5" @click.stop>
+      <h2 class="font-extrabold">Multi-stop Courier</h2>
+      <template x-for="(stop,i) in courierStops" :key="i">
+        <div class="mt-3 rounded-xl border p-3">
+          <input x-model="stop.name" placeholder="Receiver name" class="mb-2 w-full rounded-lg border px-2 py-1.5 text-sm">
+          <select x-model="stop.barangay" class="mb-2 w-full rounded-lg border px-2 py-1.5 text-sm bg-white">
+            <option value="">Barangay</option>
+            <template x-for="b in barangays" :key="'stop-'+i+b"><option :value="b" x-text="b"></option></template>
+          </select>
+          <input x-model="stop.zone" placeholder="Zone / street" class="mb-2 w-full rounded-lg border px-2 py-1.5 text-sm">
+          <input x-model="stop.address" placeholder="Exact address / landmark" class="mb-2 w-full rounded-lg border px-2 py-1.5 text-sm">
+          <input x-model.number="stop.weightKg" type="number" min="0.1" step="0.1" placeholder="Weight kg" class="w-full rounded-lg border px-2 py-1.5 text-sm">
+        </div>
+      </template>
+      <button @click="courierStops.push({name:'',barangay:'',zone:'',address:'',weightKg:1})" class="mt-2 text-xs font-bold text-amber-700">+ Add stop</button>
+      <button @click="addCourierStops()" class="mt-3 w-full rounded-xl bg-amber-500 py-3 font-extrabold text-white">Add to Cart</button>
+    </div>
+  </div>
+
+  <div x-show="toastVisible" x-transition class="fixed bottom-5 left-1/2 z-[99999] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-[11px] font-extrabold text-white" x-text="toastMsg"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+  function customerApp() {
+    const DB = window.HigalaDB;
+    const INV = () => DB.read(DB.KEYS.inventory, {});
+    const CATALOG = {
+      Food: () => (INV()['m_cdo_food'] || []).filter(i => ['Meals','Noodles'].includes(i.category) || i.category==='Meals'),
+      Grocery: () => (INV()['m_cdo_food'] || []).filter(i => i.category==='Grocery'),
+      Pharmacy: () => (INV()['m_cdo_food'] || []).filter(i => i.category==='Pharmacy'),
+    };
+    const ALL_ITEMS = () => {
+      const inv = INV()['m_cdo_food'] || [];
+      return {
+        Food: inv.filter(i => ['Meals','Noodles'].includes(i.category)),
+        Grocery: inv.filter(i => i.category==='Grocery'),
+        Pharmacy: inv.filter(i => i.category==='Pharmacy'),
+        Courier: inv.filter(i => i.category==='Courier/Others' || i.category==='Courier'),
+      };
+    };
+
+    return {
+      showAuth: true,
+      authForm: { email:'customer@higala.ph', password:'customer123' },
+      authError: '',
+      user: {},
+      profileDraft: {},
+      profileOpen: false,
+      cartOpen: false,
+      walletOpen: false,
+      courierOpen: false,
+      service: 'Rides',
+      category: 'All',
+      search: '',
+      itemsHtml: '',
+      cart: [],
+      promoCode: '',
+      discount: 0,
+      paymentMethod: 'COD',
+      scheduledAt: '',
+      topUpAmount: 200,
+      topUpMethod: 'GCash',
+      wallet: { balance: 0 },
+      dropoff: { lat:null, lng:null, address:'No drop-off selected yet.' },
+      pickup: { lat: 8.4822, lng: 124.6471, address: 'CDO Hub (default pickup)' },
+      address: { barangay: 'Carmen', zone: '', house: '', street: '' },
+      geoQuery: '',
+      geoResults: [],
+      geoTimer: null,
+      distanceKm: 0,
+      mapStatus: 'Ready',
+      map: null, marker: null, pickupMarker: null,
+      courierStops: [{ name:'', barangay:'', zone:'', address:'', weightKg:1 }],
+      services: ['🚗 Rides','🍽️ Food','🛒 Grocery','💊 Pharmacy','📦 Courier'],
+      // Comprehensive CDO barangay list (type or select)
+      barangays: [
+        'Bayabas','Bonbon','Bulua','Carmen','Cogon','Divisoria','Gusa','Indahag','Kauswagan',
+        'Lapasan','Lumbia','Macasandig','Mambuaya','Nazareth','Patag','Puntod','San Nicolas',
+        'Tablon','Agusan','Balulang','Camaman-an','Cugman','F.S. Catanico','Iponan','Kalambaguhan',
+        'Kisandalan','Lumbia','Macabalan','Macasandig','Mambuaya','Nazareth','Patag','Puerto',
+        'Puntod','San Nicolas','Tablon','Tignapoloan','Upper Carmen','Upper Balulang'
+      ],
+      barangayFilter: '',
+      showBarangayList: false,
+      pickupInput: '',
+      landmarks: [
+        { name:'Limketkai', lat:8.4848, lng:124.6465 },
+        { name:'Centrio', lat:8.4772, lng:124.6431 },
+        { name:'Divisoria', lat:8.4789, lng:124.6367 },
+        { name:'Carmen', lat:8.4651, lng:124.6218 },
+        { name:'Kauswagan', lat:8.4890, lng:124.6380 },
+        { name:'Bulua', lat:8.5080, lng:124.6200 },
+        { name:'Nazareth', lat:8.4780, lng:124.6510 },
+        { name:'Lapasan', lat:8.4825, lng:124.6555 },
+        { name:'Cugman', lat:8.4860, lng:124.6780 },
+        { name:'Macasandig', lat:8.4705, lng:124.6505 },
+      ],
+      toastMsg: '', toastVisible: false,
+
+      get greeting() { return `Maayong adlaw, ${(this.user.name||'Higala').split(' ')[0]}.`; },
+      get cartCount() { return this.cart.reduce((n,i)=>n+i.quantity,0); },
+      get subtotal() { return this.cart.reduce((s,i)=>s+i.price*i.quantity,0); },
+      get deliveryFee() {
+        const needs = this.cart.some(i=>['food','grocery','pharmacy','Food','Grocery','Pharmacy'].includes(i.fulfillment_type));
+        return needs && this.distanceKm>0 ? DB.distanceFare(this.distanceKm) : 0;
+      },
+      get total() { return Math.max(0, this.subtotal - this.discount + this.deliveryFee); },
+      get categories() {
+        const m = { Food:['All','Meals','Noodles'], Grocery:['All','Rice & Grains','Fresh Produce','Dairy & Breakfast','Pantry','Snacks & Drinks','Household'], Pharmacy:['All','Pharmacy'], Rides:['All'], Courier:['All','Courier/Others'] };
+        const k = this.service.replace(/[^\w\s]/g,'').trim();
+        return m[k] || ['All'];
+      },
+      get filteredBarangays() {
+        const f = (this.barangayFilter||'').toLowerCase().trim();
+        if (!f) return this.barangays.slice(0, 8);
+        return this.barangays.filter(b => b.toLowerCase().includes(f));
+      },
+      get formattedAddress() {
+        const parts = [this.address.house, this.address.street, this.address.zone, this.address.barangay, this.dropoff.address].filter(Boolean);
+        return [...new Set(parts)].join(', ') || 'No drop-off selected yet.';
+      },
+      get farePreview() {
+        if (!this.dropoff.lat) return 'Pin destination on map. Base fare: ₱50 (first 2 km) + ₱15/km thereafter.';
+        const fare = DB.distanceFare(this.distanceKm);
+        const baseDrop = 50;
+        const extraKm = Math.max(0, this.distanceKm - 2);
+        const perKm = 15;
+        return `Exact distance <strong>${this.distanceKm.toFixed(2)} km</strong> · Fare <strong>${this.money(fare)}</strong> <span class="text-slate-400">(₱${baseDrop} base + ₱${perKm} × ${extraKm.toFixed(1)} extra km)</span>`;
+      },
+
+      money(n) { return DB.money(n); },
+      toast(m) { this.toastMsg=m; this.toastVisible=true; setTimeout(()=>this.toastVisible=false,3000); },
+
+      init() {
+        const s = DB.getSession();
+        if (s && s.role === 'customer') { this.user = s.user; this.showAuth = false; this.wallet = DB.getWallet(s.user.id); }
+        else if (s && s.role !== 'customer') { window.location.href = DB.ROUTES[s.role]; return; }
+        this.profileDraft = { ...this.user };
+        this.renderItems();
+        this.$watch('showAuth', v => { if (!v) this.$nextTick(()=>setTimeout(()=>this.initMap(),150)); });
+        if (!this.showAuth) this.$nextTick(()=>setTimeout(()=>this.initMap(),150));
+      },
+
+      login() {
+        const r = DB.login(this.authForm.email, this.authForm.password);
+        if (!r.ok) { this.authError = r.error; return; }
+        if (r.user.role !== 'customer') { window.location.href = DB.ROUTES[r.user.role]; return; }
+        this.user = r.user; this.wallet = DB.getWallet(r.user.id); this.showAuth = false;
+      },
+
+      logout() { DB.logout(); window.location.href='index.html'; },
+
+      saveProfile() {
+        DB.updateUser(this.user.id, this.profileDraft);
+        this.user = { ...this.user, ...this.profileDraft };
+        this.profileOpen = false;
+        this.toast('Profile saved.');
+      },
+
+      handleAvatarUpload(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => { this.profileDraft.avatar = reader.result; };
+        reader.readAsDataURL(file);
+      },
+
+      setService(s) {
+        this.service = s;
+        this.category = 'All';
+        if (s.includes('Courier')) this.courierOpen = true;
+        this.renderItems();
+      },
+
+      renderItems() {
+        const esc = t => String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+        const svc = this.service.replace(/[^\w\s]/g,'').trim();
+        if (svc === 'Rides') {
+          const fare = DB.distanceFare(this.distanceKm||0);
+          this.itemsHtml = `<div class="space-y-3">
+            <div class="flex justify-between rounded-2xl border p-3"><div><b>Higala Motor</b><div class="text-xs text-slate-500">Habal-habal</div><div class="text-amber-700 font-bold">${this.money(fare)}</div></div>
+            <button data-ride="motor" class="rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white">Book</button></div>
+            <div class="flex justify-between rounded-2xl border p-3"><div><b>Higala Car</b><div class="text-xs text-slate-500">Taxi / Sedan (8% platform cut)</div><div class="text-amber-700 font-bold">${this.money(fare)}</div></div>
+            <button data-ride="car" class="rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white">Book</button></div></div>`;
+          this.$nextTick(()=>document.querySelectorAll('[data-ride]').forEach(b=>b.onclick=()=>this.bookRide(b.dataset.ride)));
+          return;
+        }
+        if (svc === 'Courier') {
+          this.itemsHtml = `<button id="courierBtn" class="w-full rounded-xl bg-amber-500 py-3 font-extrabold text-white">Open Multi-stop Courier</button>
+            <p class="mt-2 text-xs text-slate-500">Base ₱50 + ₱15/km after 2km + ₱20/extra kg per stop.</p>`;
+          this.$nextTick(()=>{ const b=document.getElementById('courierBtn'); if(b) b.onclick=()=>this.courierOpen=true; });
+          return;
+        }
+        const items = (ALL_ITEMS()[svc]||[]).filter(i=>this.category==='All'||i.category===this.category)
+          .filter(i=>!this.search||i.name.toLowerCase().includes(this.search.toLowerCase()));
+        this.itemsHtml = items.length ? `<div class="grid gap-3 sm:grid-cols-2">${items.map(i=>`
+          <article class="rounded-2xl border overflow-hidden"><img src="${esc(i.img)}" class="h-32 w-full object-cover" alt="">
+          <div class="p-3"><div class="text-[10px] font-bold text-amber-700">${esc(i.category)}</div><h4 class="font-extrabold text-sm">${esc(i.name)}</h4>
+          <div class="mt-2 flex justify-between"><span class="font-extrabold">${this.money(i.price)}</span>
+          <button data-id="${esc(i.id)}" data-svc="${svc.toLowerCase()}" class="rounded-lg bg-slate-900 px-3 py-1 text-[11px] font-bold text-white">Add</button></div></div></article>`).join('')}</div>` : '<p class="py-8 text-center text-slate-400">No items.</p>';
+        this.$nextTick(()=>document.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{
+          const item = (ALL_ITEMS()[svc]||[]).find(x=>x.id===b.dataset.id);
+          if(item) this.addItem(item, b.dataset.svc);
+        }));
+      },
+
+      addItem(item, type) {
+        const ex = this.cart.find(c=>c.id===item.id);
+        if(ex) ex.quantity++; else this.cart.push({ uid:DB.uid('c'), id:item.id, name:item.name, price:item.price, quantity:1, imageUrl:item.img, fulfillment_type:type, notes:'' });
+        this.toast(item.name+' added.');
+      },
+
+      changeQty(uid, d) {
+        const i = this.cart.find(c=>c.uid===uid); if(!i)return;
+        i.quantity+=d; if(i.quantity<=0) this.cart=this.cart.filter(c=>c.uid!==uid);
+      },
+
+      applyPromo() {
+        const r = DB.applyPromo(this.promoCode, this.subtotal);
+        this.discount = r.ok ? r.discount : 0;
+        this.toast(r.message);
+      },
+
+      bookRide(type) {
+        if(!this.dropoff.lat){this.toast('Pin destination first.');return;}
+        const fare = DB.distanceFare(this.distanceKm);
+        this.cart.push({ uid:DB.uid('c'), id:'ride-'+type, name:type==='car'?'Higala Car':'Higala Motor', price:fare, quantity:1, imageUrl:'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=120&q=80', fulfillment_type:'ride', notes:'' });
+        this.cartOpen=true;
+      },
+
+      addCourierStops() {
+        if(!this.dropoff.lat){this.toast('Pin sender on map.');return;}
+        this.courierStops.forEach((stop,i)=>{
+          if(!stop.name)return;
+          const fee = DB.courierFare(this.distanceKm, stop.weightKg);
+          const loc = [stop.street, stop.zone, stop.barangay, stop.address].filter(Boolean).join(', ');
+          this.cart.push({ uid:DB.uid('c'), id:'courier-'+i, name:'Courier → '+stop.name, price:fee, quantity:1, imageUrl:'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=120&q=80', fulfillment_type:'courier', notes:loc });
+        });
+        this.courierOpen=false; this.cartOpen=true;
+      },
+
+      topUpWallet() {
+        this.wallet = DB.walletTopUp(this.user.id, this.topUpAmount, this.topUpMethod);
+        this.toast('Wallet topped up!');
+      },
+
+      checkout() {
+        if(!this.cart.length){this.toast('Cart empty.');return;}
+        if(!this.dropoff.lat){this.toast('Select drop-off on map.');return;}
+        if(this.paymentMethod==='Wallet'){
+          const r = DB.walletDeduct(this.user.id, this.total, 'Order payment');
+          if(!r.ok){this.toast(r.error);return;}
+          this.wallet = r.wallet;
+        }
+        const order = DB.createOrder({
+          customerId: this.user.id, customerName: this.user.name,
+          service: this.service.replace(/[^\w]/g,'').toLowerCase(),
+          items: this.cart, subtotal: this.subtotal, deliveryFee: this.deliveryFee,
+          discount: this.discount, total: this.total, paymentMethod: this.paymentMethod,
+          pickup: this.pickup,
+          dropoff: { ...this.dropoff, address: this.formattedAddress, barangay: this.address.barangay, zone: this.address.zone, street: this.address.street },
+          distanceKm: this.distanceKm, scheduledAt: this.scheduledAt||null,
+          vehicleType: this.service.includes('Rides') && this.cart.some(i=>String(i.id).includes('car')) ? 'car' : 'motor',
+          notes: this.cart.map(i=>i.notes).filter(Boolean).join('; '),
+        });
+        this.lastOrder = order;
+        this.cart=[]; this.discount=0; this.cartOpen=false;
+        this.toast('Order '+order.id+' placed!');
+      },
+
+      exportReceipt() {
+        const lines = ['HIGALA EXPRESS RECEIPT','----------------',''];
+        this.cart.forEach(i=>lines.push(`${i.name} x${i.quantity} ${this.money(i.price*i.quantity)}`));
+        lines.push('','Subtotal: '+this.money(this.subtotal),'Discount: '+this.money(this.discount),'Delivery: '+this.money(this.deliveryFee),'TOTAL: '+this.money(this.total));
+        const blob = new Blob([lines.join('\n')],{type:'text/plain'});
+        const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='higala-receipt.txt'; a.click();
+      },
+
+      viewOrders() {
+        const mine = DB.getOrders().filter(o=>o.customerId===this.user.id);
+        alert(mine.length ? mine.map(o=>`${o.id}: ${o.status} ${this.money(o.total)}`).join('\n') : 'No orders yet.');
+      },
+
+      triggerSOS() {
+        if(confirm('Send emergency SOS to CDO authorities?')){
+          DB.audit('sos.customer',{userId:this.user.id, dropoff:this.dropoff});
+          this.toast('SOS broadcasted to CDO DRRMO & PNP.');
+        }
+      },
+
+      initMap() {
+        if(this.map||typeof L==='undefined')return;
+        const el=document.getElementById('map'); if(!el)return;
+        this.map = L.map('map').setView([DB.CDO_CENTER.lat, DB.CDO_CENTER.lng], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM'}).addTo(this.map);
+        this.map.on('click', e=>{
+          if(!DB.isInGeofence(e.latlng.lat,e.latlng.lng)){this.toast('Outside CDO service area.');return;}
+          this.setPin(e.latlng.lat,e.latlng.lng,'Pinned location');
+        });
+        setTimeout(()=>this.map.invalidateSize(),250);
+        this.mapStatus='Online';
+        // Create pickup marker with user avatar icon at default pickup
+        this.updatePickupMarker(this.pickup.lat, this.pickup.lng);
+        this.useGPS(true);
+      },
+
+      updatePickupMarker(lat, lng) {
+        if (!this.map || typeof L === 'undefined') return;
+        const avatarUrl = this.user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80';
+        const avatarIcon = L.divIcon({
+          className: 'pickup-avatar-marker',
+          html: `<div style="width:42px;height:42px;border-radius:50%;border:3px solid #3b82f6;overflow:hidden;background:white;box-shadow:0 4px 12px rgba(59,130,246,0.4);"><img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;"></div>`,
+          iconSize: [42, 42],
+          iconAnchor: [21, 42],
+        });
+        if (this.pickupMarker) {
+          this.pickupMarker.setLatLng([lat, lng]);
+        } else {
+          this.pickupMarker = L.marker([lat, lng], { icon: avatarIcon, draggable: true, title: 'Pickup (drag me)' }).addTo(this.map);
+          this.pickupMarker.on('dragend', (e) => {
+            const pos = e.target.getLatLng();
+            if (!DB.isInGeofence(pos.lat, pos.lng)) { this.toast('Outside CDO area — reverted.'); this.updatePickupMarker(this.pickup.lat, this.pickup.lng); return; }
+            this.pickup = { lat: pos.lat, lng: pos.lng, address: 'Custom pickup location' };
+            this.recalcDistance();
+            this.renderItems();
+          });
+        }
+      },
+
+      recalcDistance() {
+        if (!this.dropoff.lat || !this.pickup.lat) { this.distanceKm = 0; return; }
+        this.distanceKm = DB.haversineKm(this.pickup, this.dropoff);
+      },
+
+      setPin(lat,lng,addr) {
+        this.dropoff={lat,lng,address:addr};
+        this.recalcDistance();
+        if(this.marker)this.marker.setLatLng([lat,lng]); else if(this.map) this.marker=L.marker([lat,lng]).addTo(this.map);
+        this.renderItems();
+      },
+
+      searchPlaces(immediate) {
+        clearTimeout(this.geoTimer);
+        const run = async () => {
+          const q = (this.geoQuery||'').trim();
+          if (q.length < 3) { this.geoResults = []; return; }
+          try {
+            const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=ph&viewbox=124.52,8.58,124.78,8.35&bounded=0&q=' + encodeURIComponent(q + ' Cagayan de Oro');
+            const res = await fetch(url, { headers: { Accept: 'application/json' } });
+            this.geoResults = await res.json();
+          } catch (e) { this.geoResults = []; }
+        };
+        if (immediate) run(); else this.geoTimer = setTimeout(run, 350);
+      },
+
+      selectPlace(r) {
+        const lat = Number(r.lat), lng = Number(r.lon);
+        this.geoQuery = r.display_name;
+        this.geoResults = [];
+        if (this.map) this.map.setView([lat, lng], 16);
+        this.setPin(lat, lng, r.display_name);
+        this.reverseFillAddress(lat, lng, r.display_name);
+      },
+
+      async reverseFillAddress(lat, lng, fallback) {
+        try {
+          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          const data = await res.json();
+          const name = data.display_name || fallback;
+          this.dropoff.address = name;
+          const hay = name.toLowerCase();
+          const match = this.barangays.find(b => hay.includes(b.toLowerCase()));
+          if (match) this.address.barangay = match;
+          this.address.street = this.address.street || (data.address?.road || data.address?.neighbourhood || '');
+        } catch (e) {}
+      },
+
+      useGPS(silent) {
+        if (!navigator.geolocation) { if (!silent) this.toast('GPS not supported.'); return; }
+        this.mapStatus = 'Locating…';
+        navigator.geolocation.getCurrentPosition(p=>{
+          const lat = p.coords.latitude, lng = p.coords.longitude;
+          this.pickup = { lat, lng, address: 'Your GPS pickup' };
+          if (this.map) {
+            this.map.setView([lat, lng], 16);
+            this.updatePickupMarker(lat, lng);
+          }
+          this.recalcDistance();
+          this.mapStatus = `GPS ±${Math.round(p.coords.accuracy||0)}m`;
+          this.renderItems();
+          if (!silent) this.toast('Pickup locked to your GPS.');
+        }, () => {
+          this.mapStatus = 'GPS unavailable';
+          if (!silent) this.toast('Could not read GPS. Using CDO hub pickup.');
+        }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+      },
+
+      clearPin() { this.dropoff={lat:null,lng:null,address:'No drop-off selected yet.'}; this.distanceKm=0; if(this.marker&&this.map){this.map.removeLayer(this.marker);this.marker=null;} this.renderItems(); },
+      setPin(lat,lng,addr) {
+        this.dropoff={lat,lng,address:addr};
+        this.recalcDistance();
+        if (this.marker) {
+          this.marker.setLatLng([lat,lng]);
+        } else if (this.map) {
+          const dropoffIcon = L.divIcon({
+            className: 'dropoff-marker',
+            html: `<div style="width:36px;height:36px;border-radius:50%;border:3px solid #f59e0b;background:white;box-shadow:0 4px 12px rgba(245,158,11,0.4);display:flex;align-items:center;justify-content:center;font-size:18px;">📍</div>`,
+            iconSize: [36, 36],
+            iconAnchor: [18, 36],
+          });
+          this.marker = L.marker([lat,lng], { icon: dropoffIcon, draggable: true, title: 'Drop-off (drag me)' }).addTo(this.map);
+          this.marker.on('dragend', (e) => {
+            const pos = e.target.getLatLng();
+            if (!DB.isInGeofence(pos.lat, pos.lng)) { this.toast('Outside CDO area — reverted.'); this.setPin(this.dropoff.lat, this.dropoff.lng, this.dropoff.address); return; }
+            this.dropoff = { lat: pos.lat, lng: pos.lng, address: 'Custom destination' };
+            this.recalcDistance();
+            this.renderItems();
+          });
+        }
+      },
+
+      pinLandmark(lm) { this.map?.setView([lm.lat,lm.lng],16); this.setPin(lm.lat,lm.lng,lm.name); this.address.barangay = this.barangays.includes(lm.name) ? lm.name : this.address.barangay; },
+    };
+  }
+  </script>
+</body>
+</html>

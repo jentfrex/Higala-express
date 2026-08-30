@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#d97706">
+  <title>Higala Express — Driver Portal</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { amberBrand: '#D97706', amberLight: '#FEF3C7' },
+          fontFamily: {
+            sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
+            display: ['Manrope', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="/js/higala-db.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    html, body { font-family: "DM Sans", system-ui, sans-serif; }
+    .liquid-header {
+      background: linear-gradient(135deg, rgba(217, 119, 6, 0.9), rgba(245, 158, 11, 0.7), rgba(254, 243, 199, 0.85));
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+    }
+    .glass {
+      background: rgba(28, 25, 23, 0.82);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(245, 158, 11, 0.1);
+    }
+    .glass-card {
+      background: rgba(28, 25, 23, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(245, 158, 11, 0.18);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(245, 158, 11, 0.08);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .glass-card:hover {
+      border-color: rgba(245, 158, 11, 0.35);
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(245, 158, 11, 0.15);
+      transform: translateY(-1px);
+    }
+    #map { height: 38vh; min-height: 240px; width: 100%; z-index: 0; }
+    .leaflet-container { font-family: inherit; }
+    .scrollbar-none::-webkit-scrollbar { display: none; }
+    .scrollbar-none { scrollbar-width: none; }
+    .tab-active { background: #f59e0b; color: #1c1917; }
+    .pulse-dot { animation: pulseDot 1.6s ease-in-out infinite; }
+    @keyframes pulseDot {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+      50% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+    }
+    .pulse-amber { animation: pulseAmber 2s ease-in-out infinite; }
+    @keyframes pulseAmber {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
+      50% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+    }
+    .earn-meter { background: linear-gradient(90deg, #78350f, #f59e0b); }
+    .earn-meter-fill {
+      background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+      background-size: 200% 100%;
+      animation: shimmer 2s linear infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .heatmap-placeholder {
+      position: absolute; inset: 0; z-index: 400;
+      background: radial-gradient(circle at 30% 40%, rgba(239,68,68,.25) 0%, transparent 40%),
+                  radial-gradient(circle at 70% 60%, rgba(245,158,11,.3) 0%, transparent 45%),
+                  radial-gradient(circle at 50% 80%, rgba(16,185,129,.2) 0%, transparent 35%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .heatmap-placeholder.show { opacity: 1; }
+    input[type="checkbox"].sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    /* Kuwait-inspired toggle switch */
+    .toggle-switch {
+      position: relative;
+      width: 48px;
+      height: 26px;
+      background: rgba(51, 65, 85, 0.6);
+      border-radius: 13px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid rgba(100, 116, 139, 0.4);
+    }
+    .toggle-switch.active {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border-color: rgba(245, 158, 11, 0.6);
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+    }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .toggle-switch.active::after {
+      transform: translateX(22px);
+    }
+    .toggle-switch-lg {
+      width: 56px;
+      height: 30px;
+      border-radius: 15px;
+    }
+    .toggle-switch-lg::after {
+      width: 22px;
+      height: 22px;
+      top: 3px;
+      left: 3px;
+    }
+    .toggle-switch-lg.active::after {
+      transform: translateX(26px);
+    }
+    /* Micro-animation status indicator */
+    .status-ring {
+      position: relative;
+    }
+    .status-ring::before {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: #f59e0b;
+      animation: spin 1.2s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    /* Service toggle pill */
+    .service-pill {
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+    .service-pill.active {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.15));
+      border-color: rgba(245, 158, 11, 0.5);
+      box-shadow: 0 0 16px rgba(245, 158, 11, 0.15);
+    }
+    /* Telemetry meter */
+    .telemetry-bar {
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(51, 65, 85, 0.4);
+      overflow: hidden;
+    }
+    .telemetry-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #f59e0b, #fbbf24);
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* Smooth fade-in for panels */
+    .fade-in {
+      animation: fadeIn 0.4s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Small toggle switch for service pills */
+    .toggle-switch[style*="width:32px"] { width:32px!important; height:18px!important; border-radius:9px!important; }
+    .toggle-switch[style*="width:32px"]::after { width:14px!important; height:14px!important; top:2px!important; left:2px!important; }
+    .toggle-switch[style*="width:32px"].active::after { transform: translateX(14px)!important; }
+    .toggle-switch[style*="width:36px"] { width:36px!important; height:20px!important; border-radius:10px!important; }
+    .toggle-switch[style*="width:36px"]::after { width:14px!important; height:14px!important; top:2px!important; left:2px!important; }
+    .toggle-switch[style*="width:36px"].active::after { transform: translateX(16px)!important; }
+  </style>
+</head>
+
+<body class="bg-stone-950 text-stone-100 antialiased" x-data="driverApp()" x-init="init()" x-cloak>
+
+  <!-- HEADER -->
+  <header class="liquid-header sticky top-0 z-[1000]">
+    <div class="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
+      <div class="flex min-w-0 flex-1 items-center gap-2.5">
+        <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/30 text-sm font-black text-amber-950 shadow">H</div>
+        <div class="min-w-0">
+          <div class="truncate font-display text-sm font-extrabold text-amber-950" x-text="user.name"></div>
+          <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-amber-900/80">
+            <span class="inline-flex items-center gap-1">
+              <span class="h-1.5 w-1.5 rounded-full" :class="online && !onBreak ? 'bg-emerald-400 pulse-dot' : onBreak ? 'bg-amber-400' : 'bg-rose-400'"></span>
+              <span x-text="onBreak ? 'On Break' : (online ? 'On Duty' : 'Offline')"></span>
+            </span>
+            <span>·</span>
+            <span x-text="vehicleLabel"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- Admin Bypass -->
+        <button @click="showAdminBypass = true" class="grid h-9 w-9 place-items-center rounded-xl border border-amber-300/60 bg-amber-500/90 text-xs font-black text-white shadow-lg" title="Admin Quick Bypass" aria-label="Admin">👑</button>
+        <!-- SOS -->
+        <button @click="triggerSOS()" class="grid h-9 w-9 place-items-center rounded-xl border border-rose-300/60 bg-rose-500/90 text-xs font-black text-white shadow-lg" title="SOS Emergency" aria-label="SOS">SOS</button>
+        <!-- Online toggle -->
+        <label class="relative inline-flex cursor-pointer items-center" title="Duty toggle">
+          <input type="checkbox" class="peer sr-only" :checked="online" @change="toggleOnline($event.target.checked)">
+          <div class="h-7 w-12 rounded-full bg-white/50 shadow-inner peer-checked:bg-emerald-500 transition"></div>
+          <div class="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white shadow transition peer-checked:translate-x-5"></div>
+        </label>
+        <button @click="openProfile()" class="grid h-9 w-9 place-items-center overflow-hidden rounded-xl border border-white/50 bg-white/60 shadow-sm">
+          <img :src="user.avatar" :alt="user.name" class="h-full w-full object-cover">
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAP -->
+  <div class="relative">
+    <div id="map"></div>
+    <div class="heatmap-placeholder" :class="showHeatmap ? 'show' : ''"></div>
+    <div class="absolute bottom-3 left-3 z-[500] flex flex-wrap gap-2">
+      <button @click="showHeatmap = !showHeatmap" :class="showHeatmap ? 'bg-amber-600 text-white' : 'bg-white/90 text-slate-700'" class="rounded-lg px-2.5 py-1.5 text-[10px] font-extrabold shadow-lg">Heatmap</button>
+      <button @click="recenterMap()" class="rounded-lg bg-white/90 px-2.5 py-1.5 text-[10px] font-extrabold text-slate-700 shadow-lg">Recenter</button>
+    </div>
+    <div x-show="activeOrder" class="absolute right-3 top-3 z-[500] max-w-[160px] rounded-xl bg-slate-900/85 px-3 py-2 text-[10px] font-semibold text-white shadow-xl backdrop-blur">
+      <div x-text="navTarget === 'pickup' ? '→ Pickup' : '→ Dropoff'"></div>
+      <button @click="openNavigation()" class="mt-1 w-full rounded-lg bg-amber-500 py-1 text-[10px] font-extrabold text-amber-950">Navigate</button>
+    </div>
+  </div>
+
+  <!-- STATS STRIP (Kuwait-inspired Glassmorphism with Telemetry) -->
+  <div class="mx-auto grid max-w-3xl grid-cols-4 gap-2 px-4 py-3">
+    <div class="glass-card rounded-xl p-2.5 text-center">
+      <div class="text-[9px] font-bold uppercase text-amber-400/80">Rides</div>
+      <div class="text-sm font-extrabold text-white" x-text="todayRides"></div>
+      <div class="mt-1 telemetry-bar">
+        <div class="telemetry-bar-fill" :style="`width: ${Math.min(100, (todayRides/10)*100)}%`"></div>
+      </div>
+    </div>
+    <div class="glass-card rounded-xl p-2.5 text-center">
+      <div class="text-[9px] font-bold uppercase text-amber-400/80">Wallet</div>
+      <div class="text-sm font-extrabold text-emerald-400" x-text="fmt(wallet.balance)"></div>
+      <div class="mt-1 telemetry-bar">
+        <div class="telemetry-bar-fill" style="width:100%; background: linear-gradient(90deg, #10b981, #34d399);"></div>
+      </div>
+    </div>
+    <div class="glass-card rounded-xl p-2.5 text-center">
+      <div class="text-[9px] font-bold uppercase text-amber-400/80">Earned</div>
+      <div class="text-sm font-extrabold text-amber-300" x-text="fmt(todayEarnings)"></div>
+      <div class="mt-1 telemetry-bar">
+        <div class="telemetry-bar-fill" :style="`width: ${Math.min(100, (todayEarnings/1500)*100)}%`"></div>
+      </div>
+    </div>
+    <div class="glass-card rounded-xl p-2.5 text-center">
+      <div class="text-[9px] font-bold uppercase text-amber-400/80">Quota</div>
+      <div class="text-sm font-extrabold text-white" x-text="todayRides + '/10'"></div>
+      <div class="mt-1 telemetry-bar">
+        <div class="telemetry-bar-fill" :style="`width: ${Math.min(100, (todayRides/10)*100)}%`"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SERVICE TOGGLES + AUTO-RECEIVE (Kuwait-inspired Glassmorphism) -->
+  <div class="mx-auto max-w-3xl px-4 pb-3">
+    <div class="glass-card rounded-2xl p-4 shadow-lg fade-in">
+      <div class="mb-3 flex items-center justify-between">
+        <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-400">Active Job Streams</span>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-bold text-stone-300">Auto-Receive</span>
+          <div @click="setAutoReceive(!autoReceive)"
+               :class="autoReceive ? 'active' : ''"
+               class="toggle-switch cursor-pointer"></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-2">
+        <button type="button" @click="toggleStream('rides')"
+                :class="toggles.rides ? 'active' : ''"
+                class="service-pill rounded-xl p-2.5 text-center cursor-pointer">
+          <div class="text-lg">🏍️</div>
+          <div class="text-[10px] font-extrabold text-stone-200">Rides</div>
+          <div class="mt-1 flex justify-center">
+            <div :class="toggles.rides ? 'active' : ''" class="toggle-switch" style="width:32px;height:18px;border-radius:9px">
+            </div>
+          </div>
+        </button>
+        <button type="button" @click="toggleStream('food')"
+                :class="toggles.food ? 'active' : ''"
+                class="service-pill rounded-xl p-2.5 text-center cursor-pointer">
+          <div class="text-lg">🍔</div>
+          <div class="text-[10px] font-extrabold text-stone-200">Food</div>
+          <div class="mt-1 flex justify-center">
+            <div :class="toggles.food ? 'active' : ''" class="toggle-switch" style="width:32px;height:18px;border-radius:9px">
+            </div>
+          </div>
+        </button>
+        <button type="button" @click="toggleStream('parcel')"
+                :class="toggles.parcel ? 'active' : ''"
+                class="service-pill rounded-xl p-2.5 text-center cursor-pointer">
+          <div class="text-lg">📦</div>
+          <div class="text-[10px] font-extrabold text-stone-200">Parcel</div>
+          <div class="mt-1 flex justify-center">
+            <div :class="toggles.parcel ? 'active' : ''" class="toggle-switch" style="width:32px;height:18px;border-radius:9px">
+            </div>
+          </div>
+        </button>
+      </div>
+      <div x-show="autoReceive" class="mt-3 pt-2 border-t border-stone-800/60 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+        <span class="text-[10px] font-semibold text-emerald-400">Auto-Receive armed — matching jobs assign when you are free.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUOTA BAR (Enhanced with shimmer telemetry) -->
+  <div class="mx-auto max-w-3xl px-4 pb-3">
+    <div class="glass-card rounded-2xl p-3">
+      <div class="mb-1.5 flex items-center justify-between text-[10px] font-bold text-stone-300">
+        <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 pulse-amber"></span> Daily Quota Progress</span>
+        <span class="text-amber-400" x-text="todayRides + ' / 10'"></span>
+      </div>
+      <div class="telemetry-bar h-2.5">
+        <div class="earn-meter-fill h-full rounded-full" :style="'width:' + quotaPct + '%'"></div>
+      </div>
+      <p class="mt-1.5 text-[10px] text-stone-400" x-text="quotaMessage"></p>
+    </div>
+  </div>
+
+  <!-- TAB NAV -->
+  <nav class="mx-auto flex max-w-3xl gap-1.5 overflow-x-auto px-4 pb-2 scrollbar-none" aria-label="Driver sections">
+    <template x-for="t in tabs" :key="t.id">
+      <button @click="panel = t.id" :class="panel === t.id ? 'tab-active' : 'bg-stone-900/80 text-stone-300 border border-amber-500/20'" class="shrink-0 rounded-full px-3 py-1.5 text-[10px] font-extrabold shadow-sm" x-text="t.label"></button>
+    </template>
+  </nav>
+
+  <!-- MAIN PANELS -->
+  <main class="mx-auto max-w-3xl space-y-4 px-4 pb-28">
+
+    <!-- RADAR: pending jobs -->
+    <section x-show="panel === 'radar'" class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="font-display text-base font-extrabold">Job Radar</h2>
+        <button @click="refresh()" class="text-[10px] font-bold text-amber-700">↻ Refresh</button>
+      </div>
+      <p x-show="!online || onBreak" class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200">
+        <span x-text="onBreak ? 'Break mode active — jobs paused.' : 'Go online to receive dispatch jobs.'"></span>
+      </p>
+      <template x-if="pendingJobs.length === 0">
+        <div class="glass rounded-2xl p-8 text-center shadow">
+          <div class="text-3xl">📡</div>
+          <p class="mt-2 text-sm font-semibold text-stone-300">No pending jobs in CDO pool</p>
+          <p class="mt-1 text-xs text-stone-500">New orders appear here automatically</p>
+        </div>
+      </template>
+      <template x-for="job in pendingJobs" :key="job.id">
+        <article class="glass rounded-2xl border-l-4 border-amber-500 p-4 shadow-lg">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <span class="rounded-full bg-slate-900 px-2 py-0.5 text-[9px] font-bold uppercase text-white" x-text="job.service"></span>
+              <h3 class="mt-1 font-extrabold" x-text="job.customerName"></h3>
+              <p class="text-xs text-slate-500" x-text="'₱' + (job.deliveryFee || job.total || 0).toFixed(2) + ' fare · ' + (job.distanceKm || 0).toFixed(1) + ' km'"></p>
+            </div>
+            <div class="text-right text-[10px] font-bold text-slate-400" x-text="timeAgo(job.createdAt)"></div>
+          </div>
+          <div class="mt-2 space-y-1 text-xs">
+            <p><span class="font-bold text-emerald-700">Pickup:</span> <span x-text="job.pickup?.address || 'CDO Hub'"></span></p>
+            <p><span class="font-bold text-rose-700">Dropoff:</span> <span x-text="job.dropoff?.address || '—'"></span></p>
+          </div>
+          <div class="mt-3 flex gap-2" x-show="online && !onBreak && !activeOrder">
+            <button @click="acceptJob(job)" class="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-extrabold text-white shadow">Accept</button>
+            <button @click="declineJob(job)" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-extrabold text-slate-600">Decline</button>
+          </div>
+        </article>
+      </template>
+    </section>
+
+    <!-- ACTIVE TRIP -->
+    <section x-show="panel === 'active'" class="space-y-3">
+      <h2 class="font-display text-base font-extrabold">Active Trip</h2>
+      <template x-if="!activeOrder">
+        <div class="glass rounded-2xl p-8 text-center shadow">
+          <div class="text-3xl">🛵</div>
+          <p class="mt-2 text-sm font-semibold text-stone-300">No active trip</p>
+          <button @click="panel = 'radar'" class="mt-3 rounded-xl bg-amber-500 px-4 py-2 text-xs font-extrabold text-amber-950">Browse Jobs</button>
+        </div>
+      </template>
+      <template x-if="activeOrder">
+        <div class="glass rounded-2xl p-4 shadow-lg">
+          <div class="flex items-center justify-between">
+            <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-amber-800" x-text="activeOrder.status"></span>
+            <span class="text-xs font-bold text-slate-500" x-text="activeOrder.id"></span>
+          </div>
+          <h3 class="mt-2 font-extrabold" x-text="activeOrder.customerName"></h3>
+
+          <!-- Customer contact -->
+          <div class="mt-3 flex gap-2">
+            <a :href="'tel:' + customerPhone" class="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-extrabold">📞 Call</a>
+            <a :href="'sms:' + customerPhone" class="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-extrabold">💬 SMS</a>
+            <button @click="navTarget = navTarget === 'pickup' ? 'dropoff' : 'pickup'" class="flex-1 rounded-xl bg-slate-900 py-2 text-xs font-extrabold text-white" x-text="navTarget === 'pickup' ? 'To Pickup' : 'To Dropoff'"></button>
+          </div>
+
+          <div class="mt-3 space-y-1 text-xs">
+            <p><span class="font-bold">Pickup:</span> <span x-text="activeOrder.pickup?.address"></span></p>
+            <p><span class="font-bold">Dropoff:</span> <span x-text="activeOrder.dropoff?.address || '—'"></span></p>
+            <p><span class="font-bold">Payment:</span> <span x-text="activeOrder.paymentMethod"></span> · <span x-text="fmt(activeOrder.total)"></span></p>
+            <p><span class="font-bold">Your payout:</span> <span class="text-emerald-400" x-text="fmt(activeOrder.commission?.riderNet || 0)"></span></p>
+          </div>
+
+          <!-- Trip flow -->
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button x-show="activeOrder.status === 'accepted'" @click="advanceStatus('picked_up')" class="rounded-xl bg-amber-500 px-3 py-2 text-[10px] font-extrabold text-amber-950">Picked Up</button>
+            <button x-show="activeOrder.status === 'picked_up'" @click="advanceStatus('in_transit')" class="rounded-xl bg-amber-500 px-3 py-2 text-[10px] font-extrabold text-amber-950">En Route</button>
+            <button x-show="['accepted','picked_up','in_transit'].includes(activeOrder.status)" @click="advanceStatus('delivered')" class="rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-extrabold text-white">Arrived</button>
+          </div>
+
+          <!-- POD -->
+          <div class="mt-4 rounded-xl border border-dashed border-slate-300 p-3">
+            <label class="text-[10px] font-bold uppercase text-slate-500">Proof of Delivery Photo</label>
+            <input type="file" accept="image/*" capture="environment" @change="uploadPOD($event)" class="mt-1 w-full text-xs">
+            <img x-show="activeOrder.podPhoto" :src="activeOrder.podPhoto" class="mt-2 max-h-32 rounded-lg object-cover" alt="POD">
+          </div>
+
+          <!-- Tip -->
+          <div class="mt-3 flex gap-2">
+            <input x-model.number="tipAmount" type="number" min="0" step="5" placeholder="Tip ₱" class="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+            <button @click="logTip()" class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-extrabold text-white">Log Tip</button>
+          </div>
+          <ul class="mt-2 space-y-1" x-show="tipLog.length">
+            <template x-for="(t, i) in tipLog" :key="i">
+              <li class="text-[10px] text-slate-500" x-text="'+' + fmt(t.amount) + ' · ' + new Date(t.at).toLocaleTimeString()"></li>
+            </template>
+          </ul>
+
+          <button @click="completeOrder()" :disabled="!canComplete" class="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-3 text-sm font-extrabold text-white shadow-lg disabled:opacity-40">
+            Complete Order
+          </button>
+          <p x-show="!canComplete" class="mt-1 text-center text-[10px] text-slate-400">Upload POD photo to complete</p>
+        </div>
+      </template>
+    </section>
+
+    <!-- EARNINGS -->
+    <section x-show="panel === 'earnings'" class="space-y-3">
+      <h2 class="font-display text-base font-extrabold">Earnings & Wallet</h2>
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="rounded-xl bg-emerald-50 p-3">
+            <div class="text-[10px] font-bold uppercase text-emerald-700">Today</div>
+            <div class="text-xl font-extrabold text-emerald-800" x-text="fmt(todayEarnings)"></div>
+          </div>
+          <div class="rounded-xl bg-amber-50 p-3">
+            <div class="text-[10px] font-bold uppercase text-amber-700">All-time</div>
+            <div class="text-xl font-extrabold text-amber-800" x-text="fmt(driverRecord.earnings || 0)"></div>
+          </div>
+        </div>
+        <div class="mt-3 rounded-xl border border-slate-200 p-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold">Wallet Balance</span>
+            <span class="font-extrabold text-emerald-700" x-text="fmt(wallet.balance)"></span>
+          </div>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <input x-model.number="cashoutAmount" type="number" min="50" :max="wallet.balance" placeholder="Cash-out amount" class="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <button @click="requestCashout()" class="rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 px-4 py-2 text-xs font-extrabold text-amber-950 shadow">Cash Out</button>
+        </div>
+        <p x-show="cashoutMsg" x-text="cashoutMsg" class="mt-2 text-xs font-semibold text-emerald-700"></p>
+      </div>
+
+      <div class="glass rounded-2xl p-4 shadow">
+        <h3 class="text-xs font-extrabold uppercase text-slate-500">Commission Breakdown</h3>
+        <div class="mt-2 space-y-1 text-xs">
+          <p>Standard motor rate: <strong>14%</strong></p>
+          <p>Quota tier (10+ rides): <strong>7%</strong></p>
+          <p>Car / Taxi rate: <strong>8%</strong></p>
+          <p class="mt-2 font-bold text-amber-700">Your current rate: <span x-text="commissionPct"></span></p>
+        </div>
+      </div>
+
+      <div class="glass rounded-2xl p-4 shadow">
+        <h3 class="text-xs font-extrabold uppercase text-slate-500">Tip History</h3>
+        <template x-if="allTips.length === 0">
+          <p class="mt-2 text-xs text-slate-400">No tips logged yet</p>
+        </template>
+        <template x-for="t in allTips" :key="t.at + t.amount">
+          <div class="mt-2 flex justify-between border-b border-slate-100 py-1 text-xs">
+            <span x-text="fmt(t.amount)"></span>
+            <span class="text-slate-400" x-text="new Date(t.at).toLocaleDateString()"></span>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section x-show="panel === 'history'" class="space-y-3">
+      <h2 class="font-display text-base font-extrabold">Order History</h2>
+      <template x-if="orderHistory.length === 0">
+        <div class="glass rounded-2xl p-6 text-center text-sm text-slate-500 shadow">No completed trips yet</div>
+      </template>
+      <template x-for="o in orderHistory" :key="o.id">
+        <article class="glass rounded-xl p-3 shadow">
+          <div class="flex justify-between text-xs">
+            <span class="font-extrabold" x-text="o.service"></span>
+            <span class="text-emerald-700" x-text="fmt(o.commission?.riderNet || 0)"></span>
+          </div>
+          <p class="mt-1 text-[10px] text-slate-500" x-text="o.dropoff?.address || o.pickup?.address"></p>
+          <p class="text-[10px] text-slate-400" x-text="new Date(o.updatedAt).toLocaleString()"></p>
+        </article>
+      </template>
+    </section>
+
+    <!-- MORE: vehicle, break, incentives, rating -->
+    <section x-show="panel === 'more'" class="space-y-3">
+      <h2 class="font-display text-base font-extrabold">Settings & Tools</h2>
+
+      <!-- Vehicle toggle -->
+      <div class="glass rounded-2xl p-4 shadow">
+        <h3 class="text-xs font-extrabold uppercase text-slate-500">Vehicle Type</h3>
+        <div class="mt-2 flex gap-2">
+          <button @click="setVehicle('motor')" :class="vehicleType === 'motor' ? 'bg-amber-500 text-amber-950' : 'bg-stone-900 border border-amber-500/20 text-stone-200'" class="flex-1 rounded-xl py-2.5 text-xs font-extrabold">🛵 Motor</button>
+          <button @click="setVehicle('car')" :class="vehicleType === 'car' ? 'bg-amber-500 text-amber-950' : 'bg-stone-900 border border-amber-500/20 text-stone-200'" class="flex-1 rounded-xl py-2.5 text-xs font-extrabold">🚗 Car / Taxi</button>
+        </div>
+      </div>
+
+      <!-- Break mode -->
+      <div class="glass rounded-2xl p-4 shadow">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-xs font-extrabold uppercase text-slate-500">Break Mode</h3>
+            <p class="text-[10px] text-slate-400">Pause job dispatch while staying online</p>
+          </div>
+          <label class="relative inline-flex cursor-pointer items-center">
+            <input type="checkbox" class="peer sr-only" :checked="onBreak" @change="toggleBreak($event.target.checked)">
+            <div class="h-7 w-12 rounded-full bg-slate-200 peer-checked:bg-amber-500 transition"></div>
+            <div class="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white shadow transition peer-checked:translate-x-5"></div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Rating -->
+      <div class="glass rounded-2xl p-4 shadow text-center">
+        <div class="text-3xl font-extrabold text-amber-600" x-text="ratingDisplay"></div>
+        <div class="text-xs text-slate-500">Driver Rating</div>
+        <div class="mt-1 text-lg" x-text="'★'.repeat(Math.round(driverRating)) + '☆'.repeat(5 - Math.round(driverRating))"></div>
+      </div>
+
+      <!-- Incentives -->
+      <div class="glass rounded-2xl p-4 shadow">
+        <h3 class="text-xs font-extrabold uppercase text-slate-500">Incentives</h3>
+        <div class="mt-2 space-y-2">
+          <div class="rounded-xl bg-gradient-to-r from-amber-100 to-amber-50 p-3">
+            <div class="text-xs font-extrabold text-amber-900">🎯 10-Ride Bonus</div>
+            <p class="text-[10px] text-amber-800">Complete 10 trips today to unlock the higher earnings tier</p>
+            <div class="mt-1 text-[10px] font-bold" x-text="(10 - todayRides) > 0 ? (10 - todayRides) + ' rides to go' : 'Quota unlocked!'"></div>
+          </div>
+          <div class="rounded-xl bg-gradient-to-r from-emerald-100 to-emerald-50 p-3">
+            <div class="text-xs font-extrabold text-emerald-900">💰 Weekend Surge</div>
+            <p class="text-[10px] text-emerald-800">+₱20 bonus per ride on Sat–Sun in CDO zone</p>
+          </div>
+          <div class="rounded-xl bg-gradient-to-r from-violet-100 to-violet-50 p-3">
+            <div class="text-xs font-extrabold text-violet-900">⭐ 5-Star Streak</div>
+            <p class="text-[10px] text-violet-800">5 perfect ratings = ₱100 wallet bonus</p>
+          </div>
+        </div>
+      </div>
+
+      <button @click="logout()" class="w-full rounded-xl border border-rose-200 bg-rose-50 py-3 text-sm font-extrabold text-rose-700">Log Out</button>
+    </section>
+
+    <!-- PROFILE -->
+    <section x-show="panel === 'profile'" class="space-y-3">
+      <h2 class="font-display text-base font-extrabold">Edit Profile</h2>
+      <form @submit.prevent="saveProfile()" class="glass space-y-3 rounded-2xl p-4 shadow-lg">
+        <div>
+          <label class="text-[10px] font-bold uppercase text-slate-500">Full Name</label>
+          <input x-model="profileForm.name" type="text" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+        </div>
+        <div>
+          <label class="text-[10px] font-bold uppercase text-slate-500">Phone</label>
+          <input x-model="profileForm.phone" type="tel" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+        </div>
+        <div>
+          <label class="text-[10px] font-bold uppercase text-slate-500">Plate Number</label>
+          <input x-model="profileForm.plateNo" type="text" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+        </div>
+        <div>
+          <label class="text-[10px] font-bold uppercase text-slate-500">Barangay</label>
+          <input x-model="profileForm.barangay" type="text" list="driver-barangay-list" placeholder="Type or select barangay…" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <datalist id="driver-barangay-list">
+            <template x-for="b in barangays" :key="'ddatalist-'+b"><option :value="b"></option></template>
+          </datalist>
+        </div>
+        <p x-show="profileMsg" x-text="profileMsg" class="text-xs font-semibold text-emerald-700"></p>
+        <button type="submit" class="w-full rounded-xl bg-slate-900 py-3 text-sm font-extrabold text-white">Save Profile</button>
+        <button type="button" @click="panel = 'more'" class="w-full text-xs font-bold text-slate-500">← Back</button>
+      </form>
+    </section>
+
+    <!-- ADMIN QUICK BYPASS MODAL -->
+    <div x-show="showAdminBypass" x-cloak class="fixed inset-0 z-[9000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" @click.self="showAdminBypass = false">
+      <div class="w-full max-w-sm rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-300 p-6 shadow-2xl">
+        <div class="text-center mb-4">
+          <div class="text-3xl mb-2">👑</div>
+          <h3 class="font-extrabold text-lg text-amber-900">Admin Quick Bypass</h3>
+          <p class="text-[11px] text-amber-700 mt-1">Fleet master access — enter VIP password</p>
+        </div>
+        <input x-model="adminBypassPwd" type="password" placeholder="Enter bypass password…" class="w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-500" @keydown.enter="attemptAdminBypass()">
+        <p x-show="adminBypassMsg" x-text="adminBypassMsg" class="mt-2 text-[11px] font-bold text-center" :class="adminBypassOk ? 'text-emerald-600' : 'text-rose-600'"></p>
+        <div class="mt-4 flex gap-2">
+          <button @click="showAdminBypass = false" class="flex-1 py-2 rounded-xl bg-slate-200 font-bold text-sm">Cancel</button>
+          <button @click="attemptAdminBypass()" class="flex-1 py-2 rounded-xl bg-amber-500 text-white font-extrabold text-sm">Unlock</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DRIVER APPLICATION FORM -->
+    <section x-show="panel === 'apply'" class="space-y-3">
+      <h2 class="font-display text-base font-extrabold">📝 Driver Application</h2>
+      <form @submit.prevent="submitApplication()" class="space-y-3">
+        <div class="glass space-y-3 rounded-2xl p-4 shadow-lg">
+          <h3 class="text-xs font-extrabold uppercase text-amber-600">1. Personal &amp; Contact</h3>
+          <div><label class="text-[10px] font-bold uppercase text-slate-500">Full Name</label><input x-model="application.fullName" type="text" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">Phone</label><input x-model="application.phone" type="tel" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">Email</label><input x-model="application.email" type="email" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">Birthdate</label><input x-model="application.birthdate" type="date" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">Barangay</label><input x-model="application.barangay" type="text" list="app-barangay-list" placeholder="Type or select…" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"><datalist id="app-barangay-list"><template x-for="b in barangays" :key="'apdat-'+b"><option :value="b"></option></template></datalist></div>
+          </div>
+        </div>
+        <div class="glass space-y-3 rounded-2xl p-4 shadow-lg">
+          <h3 class="text-xs font-extrabold uppercase text-amber-600">2. Emergency Contact / ICE</h3>
+          <div><label class="text-[10px] font-bold uppercase text-slate-500">Contact Name</label><input x-model="application.iceName" type="text" placeholder="Full name of emergency contact" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">Phone</label><input x-model="application.icePhone" type="tel" placeholder="0917XXXXXXX" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">Relationship</label><input x-model="application.iceRelation" type="text" placeholder="Parent, spouse, sibling…" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+          </div>
+        </div>
+        <div class="glass space-y-3 rounded-2xl p-4 shadow-lg">
+          <h3 class="text-xs font-extrabold uppercase text-amber-600">3. Vehicle &amp; Legal Compliance</h3>
+          <div><label class="text-[10px] font-bold uppercase text-slate-500">Vehicle Type</label><select x-model="application.vehicleType" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"><option value="motor">🛵 Motorcycle</option><option value="car">🚗 Car / Taxi</option><option value="tricycle">🛺 Tricycle</option><option value="van">🚐 Van</option></select></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">License No.</label><input x-model="application.licenseNo" type="text" placeholder="DL-00000000" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">License Expiry</label><input x-model="application.licenseExpiry" type="date" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">Model / Plate No.</label><input x-model="application.plateModel" type="text" placeholder="Honda / ABC-1234" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"></div>
+            <div><label class="text-[10px] font-bold uppercase text-slate-500">OR/CR Upload</label><input type="file" accept="image/*,.pdf" @change="handleDocUpload($event,'orcr')" class="mt-1 w-full text-xs"></div>
+          </div>
+          <div><label class="text-[10px] font-bold uppercase text-slate-500">License Upload</label><input type="file" accept="image/*,.pdf" @change="handleDocUpload($event,'license')" class="mt-1 w-full text-xs"></div>
+        </div>
+        <div class="glass space-y-3 rounded-2xl p-4 shadow-lg">
+          <h3 class="text-xs font-extrabold uppercase text-amber-600">4. Application Letter</h3>
+          <textarea x-model="application.letter" rows="4" placeholder="Ngano gusto nimong mahimong Higala driver? — Why do you want to become a Higala driver?" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400 resize-none"></textarea>
+        </div>
+        <div class="glass space-y-3 rounded-2xl p-4 shadow-lg">
+          <h3 class="text-xs font-extrabold uppercase text-amber-600">5. Motivating Agreement</h3>
+          <label class="flex items-start gap-2 cursor-pointer">
+            <input x-model="application.agree" type="checkbox" class="mt-1 w-4 h-4 rounded border-amber-400 text-amber-500 focus:ring-amber-400">
+            <span class="text-[11px] text-slate-600">Ako nagatugot sa mga kondisyon sa Higala Express — mipasa ako sa background check ug safety training. — I agree to the terms of Higala Express and will pass background check and safety training.</span>
+          </label>
+        </div>
+        <button type="submit" :disabled="!application.agree" :class="application.agree ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-400'" class="w-full rounded-xl py-3 text-sm font-extrabold transition">Submit Application</button>
+        <button type="button" @click="panel = 'more'" class="w-full text-xs font-bold text-slate-500">← Back</button>
+      </form>
+    </section>
+
+  <!-- TOAST -->
+  <div x-show="toast" x-transition class="fixed bottom-24 left-1/2 z-[2000] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-2xl" x-text="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+  function driverApp() {
+    const DB = window.HigalaDB;
+  return {
+    user: {},
+    driverRecord: {},
+    wallet: { balance: 0, history: [] },
+    session: null,
+    online: false,
+    onBreak: false,
+    autoReceive: false,
+    toggles: { rides: true, food: true, parcel: true },
+    vehicleType: 'motor',
+    panel: 'radar',
+    activeOrder: null,
+    pendingJobs: [],
+    orderHistory: [],
+    todayRides: 0,
+    todayEarnings: 0,
+    tipAmount: 0,
+    tipLog: [],
+    allTips: [],
+    cashoutAmount: 0,
+    cashoutMsg: '',
+    profileMsg: '',
+    toast: '',
+    showHeatmap: false,
+    navTarget: 'pickup',
+    declinedIds: [],
+    map: null,
+    driverMarker: null,
+    pickupMarker: null,
+    dropoffMarker: null,
+    routeLine: null,
+    gpsWatchId: null,
+    pos: { lat: 8.4822, lng: 124.6471 },
+    pollTimer: null,
+    // Comprehensive CDO barangay list for type-or-select
+    barangays: [
+      'Bayabas','Bonbon','Bulua','Carmen','Cogon','Divisoria','Gusa','Indahag','Kauswagan',
+      'Lapasan','Lumbia','Macasandig','Mambuaya','Nazareth','Patag','Puntod','San Nicolas',
+      'Tablon','Agusan','Balulang','Camaman-an','Cugman','F.S. Catanico','Iponan','Kalambaguhan',
+      'Macabalan','Puerto','Tignapoloan','Upper Carmen','Upper Balulang'
+    ],
+    profileForm: { name: '', phone: '', plateNo: '', barangay: 'Carmen' },
+    tabs: [
+      { id: 'radar', label: '📡 Radar' },
+      { id: 'active', label: '🚀 Active' },
+      { id: 'earnings', label: '💰 Earnings' },
+      { id: 'history', label: '📋 History' },
+      { id: 'apply', label: '📝 Apply' },
+      { id: 'more', label: '⚙️ More' },
+    ],
+
+    get vehicleLabel() {
+      return this.vehicleType === 'car' ? 'Car / Taxi' : 'Motor';
+    },
+    get commissionRate() {
+      return DB.riderCommissionRate(this.driverRecord.id || this.user.id, this.vehicleType);
+    },
+    get commissionPct() {
+      return Math.round(this.commissionRate * 100) + '%';
+    },
+    get quotaPct() {
+      return Math.min(100, (this.todayRides / DB.COMMISSION.RIDER_QUOTA_THRESHOLD) * 100);
+    },
+    get quotaMessage() {
+      if (this.vehicleType === 'car') return 'Car/taxi jobs use a dedicated payout schedule.';
+      if (this.todayRides >= DB.COMMISSION.RIDER_QUOTA_THRESHOLD) return 'Quota unlocked — higher daily earnings tier is active.';
+      const left = DB.COMMISSION.RIDER_QUOTA_THRESHOLD - this.todayRides;
+      return left + ' more ride' + (left === 1 ? '' : 's') + ' to unlock the bonus earnings tier.';
+    },
+    get customerPhone() {
+      if (!this.activeOrder) return '';
+      const u = DB.getUsers().find(x => x.id === this.activeOrder.customerId);
+      return u?.phone || '09170000000';
+    },
+    get canComplete() {
+      return this.activeOrder && (this.activeOrder.podPhoto || this.activeOrder.status === 'delivered');
+    },
+    get driverRating() {
+      const reviews = DB.read(DB.KEYS.reviews, []);
+      const mine = reviews.filter(r => r.driverId === this.driverRecord.id || r.targetId === this.user.id);
+      if (!mine.length) return 4.8;
+      return mine.reduce((s, r) => s + (r.rating || 5), 0) / mine.length;
+    },
+    get ratingDisplay() {
+      return this.driverRating.toFixed(1);
+    },
+
+    fmt(n) { return DB.money(n); },
+
+    init() {
+      const s = DB.requireRole('driver');
+      if (!s) { window.location.href = '/index.html'; return; }
+      this.session = s;
+      this.user = s.user;
+      this.loadDriver();
+      this.loadWallet();
+      this.refresh();
+      this.$nextTick(() => this.initMap());
+      this.startGPS();
+      this.pollTimer = setInterval(() => this.refresh(), 8000);
+      window.addEventListener('storage', () => this.refresh());
+    },
+
+    loadDriver() {
+      const drivers = DB.read(DB.KEYS.drivers, []);
+      let d = drivers.find(x => x.userId === this.user.id);
+      if (!d) {
+        d = { id: DB.uid('d'), userId: this.user.id, name: this.user.name, online: false, vehicleType: 'motor', plateNo: 'CDO-0000', lat: DB.CDO_CENTER.lat, lng: DB.CDO_CENTER.lng, dailyRides: {}, earnings: 0, tips: [] };
+        drivers.push(d);
+        DB.write(DB.KEYS.drivers, drivers);
+      }
+      this.driverRecord = d;
+      this.online = !!d.online;
+      this.onBreak = !!d.onBreak;
+      this.vehicleType = d.vehicleType || this.user.vehicleType || 'motor';
+      this.autoReceive = !!d.autoReceive;
+      this.toggles = { rides: true, food: true, parcel: true, ...(d.toggles || {}) };
+      this.allTips = d.tips || [];
+      this.profileForm = { name: this.user.name, phone: this.user.phone || '', plateNo: d.plateNo || '', barangay: this.user.barangay || 'Carmen' };
+    },
+
+    saveDriver(patch) {
+      const drivers = DB.read(DB.KEYS.drivers, []);
+      const idx = drivers.findIndex(x => x.userId === this.user.id);
+      if (idx >= 0) {
+        drivers[idx] = { ...drivers[idx], ...patch };
+        DB.write(DB.KEYS.drivers, drivers);
+        this.driverRecord = drivers[idx];
+      }
+    },
+
+    loadWallet() {
+      this.wallet = DB.getWallet(this.user.id);
+    },
+
+    jobMatchesStreams(job) {
+      const svc = String(job.service || '').toLowerCase();
+      const vType = job.vehicleType || 'motor';
+      if (this.vehicleType === 'car' && svc.includes('ride') && vType === 'motor') return false;
+      if (this.vehicleType === 'motor' && svc.includes('ride') && (vType === 'car' || vType === 'taxi')) return false;
+      if (svc.includes('ride')) return !!this.toggles.rides;
+      if (svc.includes('food')) return !!this.toggles.food;
+      if (svc.includes('grocery') || svc.includes('pharmacy') || svc.includes('courier') || svc.includes('parcel')) return !!this.toggles.parcel;
+      return !!this.toggles.food;
+    },
+
+    toggleStream(key) {
+      this.toggles[key] = !this.toggles[key];
+      this.saveDriver({ toggles: { ...this.toggles } });
+      this.refresh();
+    },
+
+    setAutoReceive(val) {
+      this.autoReceive = !!val;
+      this.saveDriver({ autoReceive: this.autoReceive });
+      this.showToast(this.autoReceive ? 'Auto-Receive enabled' : 'Auto-Receive off');
+      this.tryAutoReceive();
+    },
+
+    tryAutoReceive() {
+      if (!this.autoReceive || !this.online || this.onBreak || this.activeOrder) return;
+      const next = this.pendingJobs[0];
+      if (next) this.acceptJob(next);
+    },
+
+    refresh() {
+      this.todayRides = DB.countTodayRides(this.driverRecord.id || this.user.id);
+      const orders = DB.getOrders();
+      const did = this.driverRecord.id;
+      this.pendingJobs = orders.filter(o =>
+        o.status === 'pending' && !o.driverId && !this.declinedIds.includes(o.id) && this.jobMatchesStreams(o)
+      );
+      const active = orders.find(o => o.driverId === did && !['completed', 'cancelled'].includes(o.status));
+      if (active) {
+        this.activeOrder = active;
+        this.tipLog = active.tips || [];
+        this.$nextTick(() => this.drawRoute(active));
+      } else {
+        this.activeOrder = null;
+        this.clearRoute();
+      }
+      this.orderHistory = orders.filter(o => o.driverId === did && o.status === 'completed').slice(0, 30);
+      const today = DB.todayKey();
+      this.todayEarnings = this.orderHistory
+        .filter(o => (o.updatedAt || '').slice(0, 10) === today)
+        .reduce((s, o) => s + (o.commission?.riderNet || 0) + (o.tips || []).reduce((a, t) => a + t.amount, 0), 0);
+      this.loadWallet();
+      this.tryAutoReceive();
+    },
+
+    initMap() {
+      if (this.map || !window.L) return;
+      this.map = L.map('map', { zoomControl: true }).setView([8.4822, 124.6471], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap',
+        maxZoom: 19,
+      }).addTo(this.map);
+      this.driverMarker = L.circleMarker([this.pos.lat, this.pos.lng], {
+        radius: 9, color: '#0f172a', fillColor: '#f59e0b', fillOpacity: 1, weight: 3,
+      }).addTo(this.map).bindPopup('You are here');
+      setTimeout(() => this.map.invalidateSize(), 200);
+    },
+
+    startGPS() {
+      if (!navigator.geolocation) return;
+      this.gpsWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          this.pos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          this.saveDriver({ lat: this.pos.lat, lng: this.pos.lng });
+          if (this.driverMarker) {
+            this.driverMarker.setLatLng([this.pos.lat, this.pos.lng]);
+          }
+          if (this.map && this.activeOrder) this.map.panTo([this.pos.lat, this.pos.lng]);
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000 }
+      );
+    },
+
+    recenterMap() {
+      if (!this.map) return;
+      this.map.setView([this.pos.lat, this.pos.lng], 15);
+    },
+
+    async drawRoute(order) {
+      if (!this.map || !order) return;
+      const pickup = order.pickup || DB.CDO_CENTER;
+      const dropoff = order.dropoff || { lat: pickup.lat + 0.02, lng: pickup.lng + 0.02, address: 'Dropoff' };
+      if (this.pickupMarker) this.map.removeLayer(this.pickupMarker);
+      if (this.dropoffMarker) this.map.removeLayer(this.dropoffMarker);
+      if (this.routeLine) this.map.removeLayer(this.routeLine);
+      this.pickupMarker = L.marker([pickup.lat, pickup.lng], { title: 'Pickup' })
+        .addTo(this.map).bindPopup('Pickup: ' + (pickup.address || ''));
+      this.dropoffMarker = L.marker([dropoff.lat, dropoff.lng], { title: 'Dropoff' })
+        .addTo(this.map).bindPopup('Dropoff: ' + (dropoff.address || ''));
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${pickup.lng},${pickup.lat};${dropoff.lng},${dropoff.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.routes && data.routes[0]) {
+          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+          this.routeLine = L.polyline(coords, { color: '#d97706', weight: 5, opacity: 0.85 }).addTo(this.map);
+          this.map.fitBounds(this.routeLine.getBounds(), { padding: [40, 40] });
+        } else {
+          this.routeLine = L.polyline([[pickup.lat, pickup.lng], [dropoff.lat, dropoff.lng]], { color: '#d97706', weight: 4, dashArray: '8 8' }).addTo(this.map);
+          this.map.fitBounds(this.routeLine.getBounds(), { padding: [40, 40] });
+        }
+      } catch (e) {
+        this.routeLine = L.polyline([[pickup.lat, pickup.lng], [dropoff.lat, dropoff.lng]], { color: '#d97706', weight: 4 }).addTo(this.map);
+        this.map.fitBounds(this.routeLine.getBounds(), { padding: [40, 40] });
+      }
+    },
+
+    clearRoute() {
+      if (!this.map) return;
+      [this.pickupMarker, this.dropoffMarker, this.routeLine].forEach(l => { if (l) this.map.removeLayer(l); });
+      this.pickupMarker = this.dropoffMarker = this.routeLine = null;
+    },
+
+    toggleOnline(val) {
+      this.online = val;
+      this.saveDriver({ online: val });
+      this.showToast(val ? 'You are now on duty' : 'You are offline');
+      if (val) this.refresh();
+    },
+
+    toggleBreak(val) {
+      this.onBreak = val;
+      this.saveDriver({ onBreak: val });
+      this.showToast(val ? 'Break mode — jobs paused' : 'Break ended');
+    },
+
+    setVehicle(type) {
+      this.vehicleType = type;
+      this.saveDriver({ vehicleType: type });
+      DB.updateUser(this.user.id, { vehicleType: type });
+      this.user.vehicleType = type;
+      this.showToast('Vehicle set to ' + (type === 'car' ? 'Car / Taxi' : 'Motor'));
+    },
+
+    acceptJob(job) {
+      if (!this.online || this.onBreak || this.activeOrder) return;
+      const updated = DB.updateOrder(job.id, {
+        driverId: this.driverRecord.id,
+        status: 'accepted',
+        vehicleType: this.vehicleType,
+        commission: DB.calcCommissionBreakdown({ ...job, driverId: this.driverRecord.id, vehicleType: this.vehicleType }),
+        tracking: [...(job.tracking || []), { event: 'accepted', at: new Date().toISOString(), lat: this.pos.lat, lng: this.pos.lng }],
+      });
+      if (updated) {
+        this.activeOrder = updated;
+        this.panel = 'active';
+        this.navTarget = 'pickup';
+        this.showToast('Job accepted!');
+        this.refresh();
+        this.drawRoute(updated);
+      }
+    },
+
+    declineJob(job) {
+      this.declinedIds.push(job.id);
+      this.pendingJobs = this.pendingJobs.filter(j => j.id !== job.id);
+      this.showToast('Job declined');
+    },
+
+    advanceStatus(status) {
+      if (!this.activeOrder) return;
+      const updated = DB.updateOrder(this.activeOrder.id, {
+        status,
+        tracking: [...(this.activeOrder.tracking || []), { event: status, at: new Date().toISOString(), lat: this.pos.lat, lng: this.pos.lng }],
+      });
+      if (updated) {
+        this.activeOrder = updated;
+        if (status === 'delivered') this.navTarget = 'dropoff';
+        this.showToast('Status: ' + status.replace('_', ' '));
+      }
+    },
+
+    uploadPOD(e) {
+      const file = e.target.files?.[0];
+      if (!file || !this.activeOrder) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const updated = DB.updateOrder(this.activeOrder.id, { podPhoto: reader.result, status: 'delivered' });
+        if (updated) {
+          this.activeOrder = updated;
+          this.showToast('POD photo uploaded');
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+
+    logTip() {
+      if (!this.activeOrder || !this.tipAmount || this.tipAmount <= 0) return;
+      const tip = { amount: Number(this.tipAmount), at: new Date().toISOString() };
+      const tips = [...(this.activeOrder.tips || []), tip];
+      const updated = DB.updateOrder(this.activeOrder.id, { tips });
+      if (updated) {
+        this.activeOrder = updated;
+        this.tipLog = tips;
+        const all = [...this.allTips, tip];
+        this.allTips = all;
+        this.saveDriver({ tips: all });
+        this.tipAmount = 0;
+        this.showToast('Tip logged: ' + this.fmt(tip.amount));
+      }
+    },
+
+    completeOrder() {
+      if (!this.activeOrder || !this.canComplete) return;
+      const order = this.activeOrder;
+      const riderNet = order.commission?.riderNet || 0;
+      const tipTotal = (order.tips || []).reduce((s, t) => s + t.amount, 0);
+      const updated = DB.updateOrder(order.id, {
+        status: 'completed',
+        tracking: [...(order.tracking || []), { event: 'completed', at: new Date().toISOString(), lat: this.pos.lat, lng: this.pos.lng }],
+      });
+      if (updated) {
+        const w = DB.getWallet(this.user.id);
+        w.balance = Math.round((w.balance + riderNet + tipTotal) * 100) / 100;
+        w.history.unshift({ type: 'ride_payout', amount: riderNet + tipTotal, orderId: order.id, at: new Date().toISOString() });
+        const wallets = DB.read(DB.KEYS.wallet, {});
+        wallets[this.user.id] = w;
+        DB.write(DB.KEYS.wallet, wallets);
+        this.activeOrder = null;
+        this.clearRoute();
+        this.panel = 'radar';
+        this.showToast('Trip completed! +' + this.fmt(riderNet + tipTotal));
+        this.refresh();
+      }
+    },
+
+    openNavigation() {
+      if (!this.activeOrder) return;
+      const target = this.navTarget === 'pickup' ? this.activeOrder.pickup : this.activeOrder.dropoff;
+      if (!target) return;
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}`;
+      window.open(url, '_blank');
+    },
+
+    requestCashout() {
+      const amt = Number(this.cashoutAmount);
+      if (!amt || amt < 50) { this.cashoutMsg = 'Minimum cash-out is ₱50'; return; }
+      if (amt > this.wallet.balance) { this.cashoutMsg = 'Insufficient wallet balance'; return; }
+      const r = DB.walletDeduct(this.user.id, amt, 'Driver cash-out to GCash');
+      if (!r.ok) { this.cashoutMsg = r.error; return; }
+      this.wallet = r.wallet;
+      this.cashoutAmount = 0;
+      this.cashoutMsg = 'Cash-out of ' + this.fmt(amt) + ' submitted to GCash/Maya';
+      DB.audit('driver.cashout', { userId: this.user.id, amount: amt });
+    },
+
+    saveProfile() {
+      DB.updateUser(this.user.id, { name: this.profileForm.name, phone: this.profileForm.phone, barangay: this.profileForm.barangay });
+      this.saveDriver({ name: this.profileForm.name, plateNo: this.profileForm.plateNo });
+      this.user = { ...this.user, name: this.profileForm.name, phone: this.profileForm.phone, barangay: this.profileForm.barangay };
+      this.profileMsg = 'Profile saved successfully';
+      setTimeout(() => this.profileMsg = '', 3000);
+    },
+
+    openProfile() {
+      // Ensure profile form is always populated with latest data when opening
+      this.profileForm = {
+        name: this.user.name || '',
+        phone: this.user.phone || '',
+        plateNo: this.driverRecord?.plateNo || '',
+        barangay: this.user.barangay || 'Carmen'
+      };
+      this.profileMsg = '';
+      this.panel = 'profile';
+    },
+
+    // Admin Quick Bypass
+    showAdminBypass: false,
+    adminBypassPwd: '',
+    adminBypassMsg: '',
+    adminBypassOk: false,
+    attemptAdminBypass() {
+      if (this.adminBypassPwd === '101391@Jent') {
+        this.adminBypassOk = true;
+        this.adminBypassMsg = 'Access granted — redirecting…';
+        setTimeout(() => {
+          this.showAdminBypass = false;
+          this.adminBypassPwd = '';
+          this.adminBypassMsg = '';
+          this.adminBypassOk = false;
+          window.location.href = '/admin.html';
+        }, 800);
+      } else {
+        this.adminBypassOk = false;
+        this.adminBypassMsg = 'Invalid password — access denied';
+      }
+    },
+
+    // Driver Application Form
+    application: {
+      fullName: '', phone: '', email: '', birthdate: '', barangay: '',
+      iceName: '', icePhone: '', iceRelation: '',
+      vehicleType: 'motor', licenseNo: '', licenseExpiry: '', plateModel: '',
+      letter: '', agree: false,
+    },
+    handleDocUpload(event, field) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.application[field] = reader.result;
+        this.showToast('Document uploaded: ' + field);
+      };
+      reader.readAsDataURL(file);
+    },
+    submitApplication() {
+      if (!this.application.agree) { this.showToast('Please agree to the terms first'); return; }
+      const apps = DB.read('higala_driver_applications', []);
+      apps.push({
+        id: DB.uid('app'),
+        userId: this.user.id,
+        ...this.application,
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+      });
+      DB.write('higala_driver_applications', apps);
+      DB.audit('driver.application_submit', { userId: this.user.id });
+      this.showToast('Application submitted! Pending review.');
+      this.panel = 'more';
+      // Reset form
+      this.application = { fullName: '', phone: '', email: '', birthdate: '', barangay: '', iceName: '', icePhone: '', iceRelation: '', vehicleType: 'motor', licenseNo: '', licenseExpiry: '', plateModel: '', letter: '', agree: false };
+    },
+
+    triggerSOS() {
+      DB.pushNotification({ type: 'sos', driverId: this.driverRecord.id, message: 'SOS from ' + this.user.name, lat: this.pos.lat, lng: this.pos.lng });
+      DB.audit('driver.sos', { userId: this.user.id, lat: this.pos.lat, lng: this.pos.lng });
+      if (confirm('SOS ALERT\n\nSend emergency alert to Higala dispatch?\n\nCDO Emergency: 911\nPNP CDO: (088) 856-2948')) {
+        this.showToast('SOS alert sent to dispatch');
+        window.open('tel:911');
+      }
+    },
+
+    logout() {
+      DB.logout();
+      window.location.href = '/index.html';
+    },
+
+    timeAgo(iso) {
+      const diff = Date.now() - new Date(iso).getTime();
+      const m = Math.floor(diff / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return m + 'm ago';
+      return Math.floor(m / 60) + 'h ago';
+    },
+
+    showToast(msg) {
+      this.toast = msg;
+      setTimeout(() => this.toast = '', 2800);
+    },
+  };
+  }
+  </script>
+</body>
+</html>

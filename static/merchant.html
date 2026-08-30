@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#d97706">
+  <title>Higala Merchant Hub — CDO</title>
+  <script src="/js/higala-db.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .liquid-header {
+      background: linear-gradient(135deg, rgba(217, 119, 6, 0.9), rgba(245, 158, 11, 0.7), rgba(254, 243, 199, 0.85));
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+    }
+    #map { height: 220px; border-radius: 1rem; z-index: 0; }
+    .order-flash { animation: orderFlash 0.6s ease-in-out 3; }
+    @keyframes orderFlash {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+      50% { box-shadow: 0 0 0 6px rgba(217, 119, 6, 0.45); background: rgba(254, 243, 199, 0.95); }
+    }
+    .alert-pulse { animation: alertPulse 1s ease-in-out infinite; }
+    @keyframes alertPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-thumb { background: #d97706; border-radius: 8px; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-amber-50 via-white to-amber-100 text-slate-800 antialiased"
+      x-data="merchantApp()" x-init="init()" x-cloak>
+
+  <!-- New-order flash overlay -->
+  <div x-show="flashAlert" x-transition
+       class="fixed inset-0 z-[60] pointer-events-none bg-amber-400/20 order-flash"></div>
+
+  <!-- Low-stock banner -->
+  <div x-show="lowStockItems.length > 0" class="bg-rose-600 text-white text-center py-2 px-4 text-xs font-bold alert-pulse">
+    ⚠️ Low stock alert:
+    <template x-for="(item, i) in lowStockItems" :key="item.id">
+      <span x-text="item.name + ' (' + item.stock + ' left)'"></span><span x-show="i < lowStockItems.length - 1"> · </span>
+    </template>
+  </div>
+
+  <!-- Liquid Header -->
+  <header class="liquid-header sticky top-0 z-50 border-b border-white/40 shadow-lg">
+    <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="grid h-11 w-11 place-items-center rounded-2xl bg-white/30 text-lg font-black text-amber-950 shadow">H</div>
+        <div>
+          <h1 class="text-lg font-extrabold text-amber-950" x-text="merchant?.name || 'Merchant Hub'"></h1>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-amber-900/70">
+            <span x-text="user?.barangay || 'CDO'"></span> · Merchant Portal
+          </p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+        <!-- Feature 6: Store open/closed toggle -->
+        <button @click="toggleStoreOpen()"
+                :class="merchant?.open ? 'bg-emerald-600 text-white' : 'bg-slate-600 text-white'"
+                class="px-3 py-1.5 rounded-xl text-xs font-extrabold shadow transition">
+          <span x-text="merchant?.open ? '🟢 Store Open' : '🔴 Store Closed'"></span>
+        </button>
+        <div class="glass rounded-xl px-3 py-1.5 text-xs font-bold text-amber-900">
+          Wallet: <span x-text="fmt(wallet.balance)"></span>
+        </div>
+        <button @click="logout()" class="px-3 py-1.5 bg-white/70 hover:bg-white rounded-xl text-xs font-extrabold text-rose-700 shadow-sm transition">
+          Logout
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6">
+    <!-- Tab Navigation -->
+    <nav class="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-none">
+      <template x-for="tab in tabs" :key="tab.id">
+        <button @click="activeTab = tab.id"
+                :class="activeTab === tab.id ? 'bg-amber-600 text-white shadow-lg' : 'glass text-slate-700 hover:bg-white'"
+                class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition">
+          <span x-text="tab.icon"></span>
+          <span x-text="tab.label"></span>
+          <span x-show="tab.badge" class="bg-rose-500 text-white text-[9px] px-1.5 py-0.5 rounded-full" x-text="tab.badge"></span>
+        </button>
+      </template>
+    </nav>
+
+    <!-- ═══════════════ LIVE ORDERS TAB ═══════════════ -->
+    <section x-show="activeTab === 'live'" class="space-y-4">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Feature 1: Live order feed -->
+        <div class="lg:col-span-2 glass rounded-2xl p-4 shadow-lg">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-extrabold text-slate-900">🔔 Live Order Feed</h2>
+            <span class="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full"
+                  x-text="pendingOrders.length + ' pending'"></span>
+          </div>
+          <div class="space-y-3 max-h-[60vh] overflow-y-auto">
+            <template x-for="order in pendingOrders" :key="order.id">
+              <div class="bg-white/90 border border-amber-200 rounded-xl p-4 shadow-sm">
+                <div class="flex justify-between items-start gap-2">
+                  <div>
+                    <span class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded" x-text="order.id"></span>
+                    <h3 class="font-extrabold text-sm mt-1" x-text="order.customerName"></h3>
+                    <p class="text-[11px] text-slate-500" x-text="fmtDate(order.createdAt)"></p>
+                  </div>
+                  <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700" x-text="order.paymentMethod"></span>
+                </div>
+                <div class="mt-2 text-xs space-y-0.5 bg-amber-50/60 rounded-lg p-2">
+                  <template x-for="item in order.items" :key="item.id || item.name">
+                    <div class="flex justify-between font-semibold">
+                      <span x-text="(item.qty || 1) + '× ' + item.name"></span>
+                      <span x-text="fmt((item.qty || 1) * (item.price || 0))"></span>
+                    </div>
+                  </template>
+                  <div class="border-t border-amber-200 pt-1 flex justify-between font-extrabold">
+                    <span>Total</span><span x-text="fmt(order.total)"></span>
+                  </div>
+                </div>
+                <!-- Feature 4: Commission breakdown -->
+                <div class="mt-2 text-[10px] bg-slate-50 rounded-lg p-2 border border-slate-200">
+                  <div class="flex justify-between"><span>Subtotal</span><span x-text="fmt(order.subtotal)"></span></div>
+                  <div class="flex justify-between text-rose-600"><span>Platform fee (16%)</span><span x-text="'-' + fmt(commissionOf(order).merchantCut)"></span></div>
+                  <div class="flex justify-between font-extrabold text-emerald-700"><span>Your net</span><span x-text="fmt(commissionOf(order).merchantNet)"></span></div>
+                </div>
+                <div class="flex gap-2 mt-3">
+                  <button @click="acceptOrder(order)" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs">✅ Accept</button>
+                  <button @click="rejectOrder(order)" class="flex-1 py-2 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-xl text-xs">❌ Reject</button>
+                </div>
+              </div>
+            </template>
+            <div x-show="pendingOrders.length === 0" class="text-center py-10 text-slate-400 text-sm">
+              <p class="text-3xl mb-2">📭</p>No pending orders right now.
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <!-- Feature 5: Kitchen prep timers -->
+          <div class="glass rounded-2xl p-4 shadow-lg">
+            <h2 class="font-extrabold text-sm mb-3">⏱️ Kitchen Prep Timers</h2>
+            <div class="flex gap-2 mb-3">
+              <input x-model="timerLabel" type="text" placeholder="Dish name" class="flex-1 px-2 py-1.5 rounded-lg border text-xs">
+              <input x-model.number="timerMins" type="number" min="1" max="120" class="w-16 px-2 py-1.5 rounded-lg border text-xs" placeholder="min">
+              <button @click="startTimer()" class="px-3 py-1.5 bg-amber-600 text-white font-bold rounded-lg text-xs">Start</button>
+            </div>
+            <template x-for="t in prepTimers" :key="t.id">
+              <div class="flex items-center justify-between bg-white/80 rounded-lg p-2 mb-2 text-xs">
+                <span class="font-bold" x-text="t.label"></span>
+                <span :class="t.remaining <= 0 ? 'text-rose-600 font-extrabold' : 'text-amber-700 font-bold'"
+                      x-text="t.remaining <= 0 ? 'DONE!' : formatTimer(t.remaining)"></span>
+                <button @click="removeTimer(t.id)" class="text-rose-500 font-bold">×</button>
+              </div>
+            </template>
+            <p x-show="prepTimers.length === 0" class="text-[11px] text-slate-400 text-center py-2">No active timers</p>
+          </div>
+
+          <!-- Feature 14: Active order status updates -->
+          <div class="glass rounded-2xl p-4 shadow-lg">
+            <h2 class="font-extrabold text-sm mb-3">🍳 Active Orders</h2>
+            <template x-for="order in activeOrders" :key="order.id">
+              <div class="bg-white/80 rounded-lg p-3 mb-2 text-xs">
+                <div class="font-bold" x-text="order.id"></div>
+                <div class="text-slate-500 mb-2" x-text="order.customerName"></div>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      :class="statusClass(order.status)" x-text="order.status"></span>
+                <div class="flex gap-1 mt-2 flex-wrap">
+                  <button x-show="order.status === 'accepted'" @click="setOrderStatus(order.id, 'preparing')"
+                          class="px-2 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg">Preparing</button>
+                  <button x-show="order.status === 'preparing'" @click="setOrderStatus(order.id, 'ready')"
+                          class="px-2 py-1 bg-blue-100 text-blue-800 font-bold rounded-lg">Ready</button>
+                  <button x-show="order.status === 'ready'" @click="setOrderStatus(order.id, 'completed')"
+                          class="px-2 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg">Completed</button>
+                </div>
+              </div>
+            </template>
+            <p x-show="activeOrders.length === 0" class="text-[11px] text-slate-400 text-center py-2">No active orders</p>
+          </div>
+
+          <!-- Feature 22: Rider assignment -->
+          <div class="glass rounded-2xl p-4 shadow-lg">
+            <h2 class="font-extrabold text-sm mb-3">🛵 Rider Assignment</h2>
+            <template x-for="d in onlineDrivers" :key="d.id">
+              <div class="flex items-center justify-between bg-white/80 rounded-lg p-2 mb-2 text-xs">
+                <div>
+                  <div class="font-bold" x-text="d.name"></div>
+                  <div class="text-slate-500" x-text="d.vehicleType + ' · ' + d.plateNo"></div>
+                </div>
+                <span class="text-emerald-600 font-bold">● Online</span>
+              </div>
+            </template>
+            <p x-show="onlineDrivers.length === 0" class="text-[11px] text-slate-400 text-center py-2">No riders online</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ INVENTORY TAB ═══════════════ -->
+    <section x-show="activeTab === 'inventory'" class="space-y-4">
+      <div class="glass rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row gap-3 items-center">
+        <input x-model="searchQuery" type="text" placeholder="Search menu items…"
+               class="flex-1 w-full px-3 py-2 rounded-xl border text-sm font-semibold focus:ring-2 focus:ring-amber-400 outline-none">
+        <!-- Category filter dropdown (enhanced) -->
+        <select x-model="categoryFilter" class="px-3 py-2 rounded-xl border text-sm font-semibold bg-white min-w-[140px]">
+          <option value="All">All Categories</option>
+          <template x-for="cat in allCategories" :key="'filter-'+cat">
+            <option :value="cat" x-text="cat"></option>
+          </template>
+        </select>
+        <button @click="openItemModal()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-xs whitespace-nowrap">+ Add Item</button>
+      </div>
+
+      <!-- Category Quick-Filter Pills (All categories visible) -->
+      <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <button @click="categoryFilter = 'All'"
+                :class="categoryFilter === 'All' ? 'bg-amber-500 text-amber-950 border-amber-500' : 'bg-white text-slate-600 border-slate-200 hover:border-amber-400'"
+                class="shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all">
+          All
+        </button>
+        <template x-for="cat in allCategories" :key="'pill-'+cat">
+          <button @click="categoryFilter = cat"
+                  :class="categoryFilter === cat ? 'bg-amber-500 text-amber-950 border-amber-500' : 'bg-white text-slate-600 border-slate-200 hover:border-amber-400'"
+                  class="shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all"
+                  x-text="cat">
+          </button>
+        </template>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <template x-for="item in filteredInventory" :key="item.id">
+          <div class="glass rounded-2xl overflow-hidden shadow-lg flex flex-col">
+            <div class="h-32 bg-cover bg-center relative" :style="'background-image:url(' + (item.img || '') + ')'">
+              <span :class="item.stock <= 5 ? 'bg-rose-600' : 'bg-emerald-600'"
+                    class="absolute top-2 right-2 text-white text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    x-text="'Stock: ' + item.stock"></span>
+            </div>
+            <div class="p-3 flex-1 flex flex-col">
+              <span class="text-[10px] font-bold text-amber-700 uppercase" x-text="item.category"></span>
+              <h3 class="font-extrabold text-sm" x-text="item.name"></h3>
+              <p class="text-lg font-black text-slate-900 mt-1" x-text="fmt(item.price)"></p>
+              <div class="flex gap-2 mt-auto pt-3">
+                <button @click="openItemModal(item)" class="flex-1 py-1.5 bg-slate-200 hover:bg-slate-300 font-bold rounded-lg text-xs">Edit</button>
+                <button @click="deleteItem(item)" class="flex-1 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-lg text-xs">Delete</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div x-show="filteredInventory.length === 0" class="text-center py-12 text-slate-400 text-sm">No items match your filter.</div>
+    </section>
+
+    <!-- ═══════════════ REVENUE TAB ═══════════════ -->
+    <section x-show="activeTab === 'revenue'" class="space-y-4">
+      <!-- Feature 11: Revenue dashboard -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="glass rounded-2xl p-4 shadow-lg border-l-4 border-amber-600">
+          <p class="text-[10px] font-bold uppercase text-slate-500">Today's Revenue</p>
+          <p class="text-2xl font-black text-amber-900" x-text="fmt(stats.todayRevenue)"></p>
+        </div>
+        <div class="glass rounded-2xl p-4 shadow-lg border-l-4 border-emerald-600">
+          <p class="text-[10px] font-bold uppercase text-slate-500">Your Net (after 16%)</p>
+          <p class="text-2xl font-black text-emerald-800" x-text="fmt(stats.todayNet)"></p>
+        </div>
+        <div class="glass rounded-2xl p-4 shadow-lg border-l-4 border-rose-600">
+          <p class="text-[10px] font-bold uppercase text-slate-500">Platform Fees Paid</p>
+          <p class="text-2xl font-black text-rose-700" x-text="fmt(stats.todayCommission)"></p>
+        </div>
+        <div class="glass rounded-2xl p-4 shadow-lg border-l-4 border-blue-600">
+          <p class="text-[10px] font-bold uppercase text-slate-500">Completed Orders</p>
+          <p class="text-2xl font-black text-blue-800" x-text="stats.completedCount"></p>
+        </div>
+      </div>
+
+      <!-- Feature 17: Daily sales chart placeholder -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">📈 Daily Sales Chart</h2>
+        <div class="h-48 bg-gradient-to-t from-amber-100 to-white rounded-xl border border-amber-200 flex items-end justify-around px-4 pb-4 gap-2">
+          <template x-for="bar in salesChart" :key="bar.day">
+            <div class="flex flex-col items-center gap-1 flex-1">
+              <div class="w-full bg-amber-500 rounded-t-lg transition-all" :style="'height:' + bar.pct + '%; min-height:4px'"></div>
+              <span class="text-[9px] font-bold text-slate-500" x-text="bar.day"></span>
+            </div>
+          </template>
+        </div>
+        <p class="text-[10px] text-slate-400 mt-2 text-center">7-day revenue trend (placeholder chart)</p>
+      </div>
+
+      <!-- Feature 4: Commission transparency ledger -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">💰 16% Commission Transparency Ledger</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="bg-amber-100/70 text-left">
+                <th class="p-2 font-extrabold">Order</th>
+                <th class="p-2 font-extrabold">Subtotal</th>
+                <th class="p-2 font-extrabold">Fee (16%)</th>
+                <th class="p-2 font-extrabold">Your Net</th>
+                <th class="p-2 font-extrabold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="order in merchantOrders" :key="order.id">
+                <tr class="border-b border-slate-100">
+                  <td class="p-2 font-semibold" x-text="order.id"></td>
+                  <td class="p-2" x-text="fmt(order.subtotal)"></td>
+                  <td class="p-2 text-rose-600" x-text="'-' + fmt(commissionOf(order).merchantCut)"></td>
+                  <td class="p-2 text-emerald-700 font-bold" x-text="fmt(commissionOf(order).merchantNet)"></td>
+                  <td class="p-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold" :class="statusClass(order.status)" x-text="order.status"></span></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ ORDERS TAB ═══════════════ -->
+    <section x-show="activeTab === 'orders'" class="space-y-4">
+      <!-- Feature 10: Order history -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-extrabold">📋 Order History</h2>
+          <!-- Feature 23: Export CSV -->
+          <button @click="exportOrdersCSV()" class="px-3 py-1.5 bg-slate-800 text-white font-bold rounded-xl text-xs">📥 Export CSV</button>
+        </div>
+        <div class="overflow-x-auto max-h-96 overflow-y-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="bg-slate-100 text-left sticky top-0">
+                <th class="p-2 font-extrabold">ID</th>
+                <th class="p-2 font-extrabold">Customer</th>
+                <th class="p-2 font-extrabold">Total</th>
+                <th class="p-2 font-extrabold">Net</th>
+                <th class="p-2 font-extrabold">Status</th>
+                <th class="p-2 font-extrabold">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="order in merchantOrders" :key="'h-' + order.id">
+                <tr class="border-b border-slate-100 hover:bg-amber-50/50">
+                  <td class="p-2 font-semibold" x-text="order.id"></td>
+                  <td class="p-2" x-text="order.customerName"></td>
+                  <td class="p-2" x-text="fmt(order.total)"></td>
+                  <td class="p-2 text-emerald-700 font-bold" x-text="fmt(commissionOf(order).merchantNet)"></td>
+                  <td class="p-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold" :class="statusClass(order.status)" x-text="order.status"></span></td>
+                  <td class="p-2 text-slate-500" x-text="fmtDate(order.createdAt)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Feature 18: Refund requests -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">↩️ Refund Requests</h2>
+        <template x-for="d in disputes" :key="d.id">
+          <div class="bg-white/80 rounded-xl p-3 mb-2 text-xs flex justify-between items-center">
+            <div>
+              <div class="font-bold" x-text="d.orderId || d.id"></div>
+              <div class="text-slate-500" x-text="d.reason || d.message || 'Refund requested'"></div>
+            </div>
+            <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]"
+                  x-text="d.status || 'pending'"></span>
+          </div>
+        </template>
+        <p x-show="disputes.length === 0" class="text-center py-6 text-slate-400 text-sm">No refund requests.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════ MARKETING TAB ═══════════════ -->
+    <section x-show="activeTab === 'marketing'" class="space-y-4">
+      <!-- Feature 9: Flash sale creator -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">⚡ Flash Sale Creator</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <select x-model="flashSale.itemId" class="px-3 py-2 rounded-xl border text-sm">
+            <option value="">Select item</option>
+            <template x-for="item in inventory" :key="'fs-' + item.id">
+              <option :value="item.id" x-text="item.name + ' — ' + fmt(item.price)"></option>
+            </template>
+          </select>
+          <input x-model.number="flashSale.discount" type="number" min="5" max="90" placeholder="Discount %"
+                 class="px-3 py-2 rounded-xl border text-sm">
+          <input x-model="flashSale.endsAt" type="datetime-local" class="px-3 py-2 rounded-xl border text-sm">
+          <button @click="createFlashSale()" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-sm">Launch Flash Sale</button>
+        </div>
+        <div x-show="activeFlashSales.length > 0" class="mt-3 space-y-2">
+          <template x-for="fs in activeFlashSales" :key="fs.id">
+            <div class="bg-rose-50 border border-rose-200 rounded-lg p-2 text-xs flex justify-between">
+              <span x-text="fs.itemName + ' — ' + fs.discount + '% off'"></span>
+              <button @click="endFlashSale(fs.id)" class="text-rose-600 font-bold">End</button>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Feature 21: Promo management -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">🎟️ Promo Management</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-4">
+          <input x-model="promoForm.code" placeholder="CODE" class="px-3 py-2 rounded-xl border text-sm uppercase">
+          <select x-model="promoForm.type" class="px-3 py-2 rounded-xl border text-sm">
+            <option value="flat">Flat ₱</option>
+            <option value="percent">Percent %</option>
+          </select>
+          <input x-model.number="promoForm.value" type="number" placeholder="Value" class="px-3 py-2 rounded-xl border text-sm">
+          <input x-model.number="promoForm.minSubtotal" type="number" placeholder="Min spend" class="px-3 py-2 rounded-xl border text-sm">
+          <button @click="savePromo()" class="px-3 py-2 bg-amber-600 text-white font-extrabold rounded-xl text-sm">Add Promo</button>
+        </div>
+        <template x-for="p in promos" :key="p.code">
+          <div class="flex items-center justify-between bg-white/80 rounded-lg p-3 mb-2 text-xs">
+            <div>
+              <span class="font-extrabold text-amber-800" x-text="p.code"></span>
+              <span class="text-slate-500 ml-2" x-text="p.type === 'percent' ? p.value + '%' : fmt(p.value)"></span>
+              <span class="text-slate-400 ml-1" x-text="'min ' + fmt(p.minSubtotal)"></span>
+            </div>
+            <button @click="togglePromo(p)" :class="p.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'"
+                    class="px-3 py-1 rounded-lg font-bold" x-text="p.active ? 'Active' : 'Inactive'"></button>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- ═══════════════ STORE TAB ═══════════════ -->
+    <section x-show="activeTab === 'store'" class="space-y-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Map -->
+        <div class="glass rounded-2xl p-4 shadow-lg">
+          <h2 class="font-extrabold mb-3">📍 Store Location — CDO</h2>
+          <div id="map"></div>
+        </div>
+
+        <!-- Feature 19: Operating hours -->
+        <div class="glass rounded-2xl p-4 shadow-lg">
+          <h2 class="font-extrabold mb-3">🕐 Operating Hours</h2>
+          <div class="space-y-2 text-sm">
+            <template x-for="day in operatingHours" :key="day.day">
+              <div class="flex justify-between bg-white/80 rounded-lg px-3 py-2">
+                <span class="font-bold" x-text="day.day"></span>
+                <span :class="day.closed ? 'text-rose-600' : 'text-emerald-700'" class="font-semibold"
+                      x-text="day.closed ? 'Closed' : day.open + ' – ' + day.close"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 20: Multi-branch placeholder -->
+      <div class="glass rounded-2xl p-4 shadow-lg border-2 border-dashed border-amber-300">
+        <h2 class="font-extrabold mb-2">🏢 Multi-Branch Management</h2>
+        <p class="text-xs text-slate-500 mb-3">Coming soon — manage multiple store locations from one dashboard.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="bg-amber-50 rounded-xl p-3 text-center opacity-60">
+            <div class="text-2xl">🏪</div>
+            <div class="font-bold text-sm mt-1" x-text="merchant?.name || 'Main Branch'"></div>
+            <div class="text-[10px] text-emerald-600 font-bold">Active</div>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-3 text-center opacity-40">
+            <div class="text-2xl">➕</div>
+            <div class="font-bold text-sm mt-1">Branch 2</div>
+            <div class="text-[10px] text-slate-400">Placeholder</div>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-3 text-center opacity-40">
+            <div class="text-2xl">➕</div>
+            <div class="font-bold text-sm mt-1">Branch 3</div>
+            <div class="text-[10px] text-slate-400">Placeholder</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ REVIEWS & CHAT TAB ═══════════════ -->
+    <section x-show="activeTab === 'reviews'" class="space-y-4">
+      <!-- Feature 8: Customer reviews -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">⭐ Customer Reviews</h2>
+        <div class="flex items-center gap-3 mb-4">
+          <span class="text-3xl font-black text-amber-600" x-text="avgRating"></span>
+          <div>
+            <div class="text-amber-500 text-lg" x-text="'★'.repeat(Math.round(avgRating)) + '☆'.repeat(5 - Math.round(avgRating))"></div>
+            <div class="text-xs text-slate-500" x-text="reviews.length + ' reviews'"></div>
+          </div>
+        </div>
+        <template x-for="r in reviews" :key="r.id">
+          <div class="bg-white/80 rounded-xl p-3 mb-2 text-xs">
+            <div class="flex justify-between">
+              <span class="font-bold" x-text="r.customerName || 'Customer'"></span>
+              <span class="text-amber-500" x-text="'★'.repeat(r.rating || 5)"></span>
+            </div>
+            <p class="text-slate-600 mt-1" x-text="r.comment || r.text || 'Great food!'"></p>
+            <p class="text-[10px] text-slate-400 mt-1" x-text="fmtDate(r.at || r.createdAt)"></p>
+          </div>
+        </template>
+        <p x-show="reviews.length === 0" class="text-center py-6 text-slate-400 text-sm">No reviews yet.</p>
+      </div>
+
+      <!-- Feature 15: Customer chat placeholder -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">💬 Customer Chat</h2>
+        <div class="bg-slate-50 rounded-xl p-4 h-48 overflow-y-auto mb-3 space-y-2">
+          <div class="bg-white rounded-lg p-2 text-xs max-w-[80%] shadow-sm">
+            <span class="font-bold text-amber-700">Maria H.</span>
+            <p class="mt-0.5">Hi! Is the Chicken Inasal still available?</p>
+          </div>
+          <div class="bg-amber-100 rounded-lg p-2 text-xs max-w-[80%] ml-auto shadow-sm">
+            <span class="font-bold text-amber-800">You</span>
+            <p class="mt-0.5">Yes po! Fresh and ready to order. 😊</p>
+          </div>
+          <div class="bg-white rounded-lg p-2 text-xs max-w-[80%] shadow-sm">
+            <span class="font-bold text-amber-700">Maria H.</span>
+            <p class="mt-0.5">Salamat! Ordering now.</p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <input type="text" placeholder="Type a message… (placeholder)" disabled
+                 class="flex-1 px-3 py-2 rounded-xl border text-sm bg-slate-100 text-slate-400">
+          <button disabled class="px-4 py-2 bg-slate-300 text-slate-500 font-bold rounded-xl text-sm cursor-not-allowed">Send</button>
+        </div>
+        <p class="text-[10px] text-slate-400 mt-2 text-center">Live chat integration coming soon</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════ WALLET TAB ═══════════════ -->
+    <section x-show="activeTab === 'wallet'" class="space-y-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="glass rounded-2xl p-4 shadow-lg">
+          <h2 class="font-extrabold mb-1">💳 Wallet Balance</h2>
+          <p class="text-3xl font-black text-emerald-700" x-text="fmt(wallet.balance)"></p>
+          <p class="text-xs text-slate-500 mt-1">Available for payout</p>
+        </div>
+
+        <!-- Feature 7: Payout request -->
+        <div class="glass rounded-2xl p-4 shadow-lg">
+          <h2 class="font-extrabold mb-3">🏦 Request Payout</h2>
+          <div class="space-y-3">
+            <select x-model="payout.method" class="w-full px-3 py-2 rounded-xl border text-sm">
+              <option value="GCash">GCash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+            </select>
+            <input x-model="payout.account" type="text" placeholder="Account / GCash number"
+                   class="w-full px-3 py-2 rounded-xl border text-sm">
+            <input x-model.number="payout.amount" type="number" min="100" :max="wallet.balance" placeholder="Amount (₱)"
+                   class="w-full px-3 py-2 rounded-xl border text-sm">
+            <button @click="requestPayout()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-sm">
+              Submit Payout Request
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">📜 Wallet History</h2>
+        <template x-for="(h, i) in wallet.history" :key="i">
+          <div class="flex justify-between bg-white/80 rounded-lg p-2 mb-2 text-xs">
+            <div>
+              <span class="font-bold" x-text="h.type"></span>
+              <span class="text-slate-400 ml-1" x-text="h.method || h.note || ''"></span>
+            </div>
+            <span :class="h.amount >= 0 ? 'text-emerald-700' : 'text-rose-600'" class="font-extrabold"
+                  x-text="(h.amount >= 0 ? '+' : '') + fmt(Math.abs(h.amount))"></span>
+          </div>
+        </template>
+        <p x-show="!wallet.history?.length" class="text-center py-4 text-slate-400 text-sm">No transactions yet.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════ PROFILE TAB ═══════════════ -->
+    <section x-show="activeTab === 'profile'" class="space-y-4">
+      <!-- Feature 24: Profile settings -->
+      <div class="glass rounded-2xl p-4 shadow-lg max-w-lg">
+        <h2 class="font-extrabold mb-4">⚙️ Profile Settings</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="text-[10px] font-bold uppercase text-slate-500">Store Name</label>
+            <input x-model="profileForm.storeName" class="w-full px-3 py-2 rounded-xl border text-sm mt-0.5">
+          </div>
+          <div>
+            <label class="text-[10px] font-bold uppercase text-slate-500">Contact Name</label>
+            <input x-model="profileForm.name" class="w-full px-3 py-2 rounded-xl border text-sm mt-0.5">
+          </div>
+          <div>
+            <label class="text-[10px] font-bold uppercase text-slate-500">Phone</label>
+            <input x-model="profileForm.phone" class="w-full px-3 py-2 rounded-xl border text-sm mt-0.5">
+          </div>
+          <div>
+            <label class="text-[10px] font-bold uppercase text-slate-500">Email</label>
+            <input x-model="profileForm.email" class="w-full px-3 py-2 rounded-xl border text-sm mt-0.5" disabled>
+          </div>
+          <div>
+            <label class="text-[10px] font-bold uppercase text-slate-500">Barangay</label>
+            <select x-model="profileForm.barangay" class="w-full px-3 py-2 rounded-xl border text-sm mt-0.5 bg-white">
+              <template x-for="b in barangays" :key="b"><option :value="b" x-text="b"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] font-bold uppercase text-slate-500">New Password (optional)</label>
+            <input x-model="profileForm.password" type="password" placeholder="Leave blank to keep current"
+                   class="w-full px-3 py-2 rounded-xl border text-sm mt-0.5">
+          </div>
+          <button @click="saveProfile()" class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-sm">
+            Save Profile
+          </button>
+        </div>
+      </div>
+
+      <!-- Audit log snippet -->
+      <div class="glass rounded-2xl p-4 shadow-lg">
+        <h2 class="font-extrabold mb-3">📋 Recent Activity</h2>
+        <template x-for="log in auditLogs.slice(0, 10)" :key="log.id">
+          <div class="flex justify-between text-xs py-1.5 border-b border-slate-100">
+            <span class="font-semibold" x-text="log.action"></span>
+            <span class="text-slate-400" x-text="fmtDate(log.at)"></span>
+          </div>
+        </template>
+      </div>
+    </section>
+  </div>
+
+  <!-- Item Modal (Feature 3 & 16: Inventory CRUD) -->
+  <div x-show="showItemModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <div class="glass w-full max-w-md p-5 rounded-2xl shadow-2xl">
+      <h3 class="font-extrabold text-lg mb-4" x-text="itemForm.id ? 'Edit Menu Item' : 'Add Menu Item'"></h3>
+      <div class="space-y-3">
+        <input x-model="itemForm.name" placeholder="Item name" class="w-full px-3 py-2 rounded-xl border text-sm" required>
+        <div class="grid grid-cols-2 gap-3">
+          <input x-model.number="itemForm.price" type="number" placeholder="Price" class="px-3 py-2 rounded-xl border text-sm">
+          <input x-model.number="itemForm.stock" type="number" placeholder="Stock" class="px-3 py-2 rounded-xl border text-sm">
+        </div>
+        <select x-model="itemForm.category" class="w-full px-3 py-2 rounded-xl border text-sm bg-white">
+          <template x-for="cat in allCategories" :key="'form-'+cat">
+            <option :value="cat" x-text="cat"></option>
+          </template>
+        </select>
+        <!-- Enhanced Native File Uploader with FileReader Preview -->
+        <div>
+          <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Product photo</label>
+          <div class="relative">
+            <input type="file" accept="image/*" @change="handleImageUpload($event)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" aria-label="Upload product photo">
+            <div class="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-amber-400/40 bg-amber-50/50 hover:border-amber-500 hover:bg-amber-50 transition-all">
+              <template x-if="itemForm.img">
+                <img :src="itemForm.img" alt="Preview" class="h-14 w-14 rounded-lg object-cover bg-slate-100 shrink-0">
+              </template>
+              <template x-if="!itemForm.img">
+                <div class="h-14 w-14 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                  <span class="text-2xl">📷</span>
+                </div>
+              </template>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-amber-700">Click to browse image</p>
+                <p class="text-[10px] text-slate-500">JPG, PNG • Maps instantly to inventory</p>
+              </div>
+              <span class="text-lg text-amber-500">+</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 pt-2">
+          <button @click="showItemModal = false" class="flex-1 py-2 bg-slate-200 font-bold rounded-xl text-sm">Cancel</button>
+          <button @click="saveItem()" class="flex-1 py-2 bg-amber-600 text-white font-extrabold rounded-xl text-sm">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function merchantApp() {
+    const DB = window.HigalaDB;
+    return {
+      activeTab: 'live',
+      session: null,
+      user: null,
+      merchant: null,
+      merchantId: null,
+      wallet: { balance: 0, history: [] },
+      inventory: [],
+      reviews: [],
+      disputes: [],
+      promos: [],
+      auditLogs: [],
+      drivers: [],
+      flashSales: [],
+      searchQuery: '',
+      categoryFilter: 'All',
+      showItemModal: false,
+      itemForm: { id: null, name: '', price: 0, stock: 0, category: 'Meals', img: '' },
+      profileForm: { name: '', email: '', phone: '', barangay: '', storeName: '', password: '' },
+      payout: { method: 'GCash', account: '', amount: 0 },
+      flashSale: { itemId: '', discount: 20, endsAt: '' },
+      promoForm: { code: '', type: 'flat', value: 50, minSubtotal: 200 },
+      timerLabel: '',
+      timerMins: 15,
+      prepTimers: [],
+      flashAlert: false,
+      lastPendingCount: 0,
+      map: null,
+      pollInterval: null,
+      timerInterval: null,
+      barangays: DB.BARANGAYS,
+      operatingHours: [
+        { day: 'Monday', open: '08:00', close: '21:00', closed: false },
+        { day: 'Tuesday', open: '08:00', close: '21:00', closed: false },
+        { day: 'Wednesday', open: '08:00', close: '21:00', closed: false },
+        { day: 'Thursday', open: '08:00', close: '21:00', closed: false },
+        { day: 'Friday', open: '08:00', close: '22:00', closed: false },
+        { day: 'Saturday', open: '09:00', close: '22:00', closed: false },
+        { day: 'Sunday', open: '09:00', close: '20:00', closed: false },
+      ],
+
+      get tabs() {
+        return [
+          { id: 'live', icon: '⚡', label: 'Live', badge: this.pendingOrders.length || null },
+          { id: 'inventory', icon: '📦', label: 'Inventory', badge: this.lowStockItems.length || null },
+          { id: 'revenue', icon: '💰', label: 'Revenue', badge: null },
+          { id: 'orders', icon: '📋', label: 'Orders', badge: null },
+          { id: 'marketing', icon: '🎯', label: 'Marketing', badge: null },
+          { id: 'store', icon: '🏪', label: 'Store', badge: null },
+          { id: 'reviews', icon: '⭐', label: 'Reviews', badge: null },
+          { id: 'wallet', icon: '💳', label: 'Wallet', badge: null },
+          { id: 'profile', icon: '⚙️', label: 'Profile', badge: null },
+        ];
+      },
+
+      get merchantOrders() {
+        return DB.getOrders().filter(o => o.merchantId === this.merchantId);
+      },
+
+      get pendingOrders() {
+        return this.merchantOrders.filter(o => o.status === 'pending');
+      },
+
+      get activeOrders() {
+        return this.merchantOrders.filter(o => ['accepted', 'preparing', 'ready'].includes(o.status));
+      },
+
+      get allCategories() {
+        return ['Meals', 'Noodles', 'Grocery', 'Pharmacy', 'Courier/Others'];
+      },
+
+      get categories() {
+        return this.allCategories;
+      },
+
+      get filteredInventory() {
+        const q = this.searchQuery.toLowerCase().trim();
+        return this.inventory.filter(i => {
+          const matchQ = !q || i.name.toLowerCase().includes(q);
+          const matchC = this.categoryFilter === 'All' || i.category === this.categoryFilter;
+          return matchQ && matchC;
+        });
+      },
+
+      get lowStockItems() {
+        return this.inventory.filter(i => i.stock <= 5);
+      },
+
+      get onlineDrivers() {
+        return this.drivers.filter(d => d.online);
+      },
+
+      get activeFlashSales() {
+        return this.flashSales.filter(fs => new Date(fs.endsAt) > new Date());
+      },
+
+      get avgRating() {
+        if (!this.reviews.length) return this.merchant?.rating || 5;
+        const sum = this.reviews.reduce((s, r) => s + (r.rating || 5), 0);
+        return (sum / this.reviews.length).toFixed(1);
+      },
+
+      get stats() {
+        const today = DB.todayKey();
+        const completed = this.merchantOrders.filter(o => o.status === 'completed' && o.createdAt?.startsWith(today));
+        let todayRevenue = 0, todayNet = 0, todayCommission = 0;
+        completed.forEach(o => {
+          todayRevenue += o.subtotal || 0;
+          const c = this.commissionOf(o);
+          todayNet += c.merchantNet;
+          todayCommission += c.merchantCut;
+        });
+        return { todayRevenue, todayNet, todayCommission, completedCount: completed.length };
+      },
+
+      get salesChart() {
+        const days = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const key = d.toISOString().slice(0, 10);
+          const rev = this.merchantOrders
+            .filter(o => o.status === 'completed' && o.createdAt?.startsWith(key))
+            .reduce((s, o) => s + (o.subtotal || 0), 0);
+          days.push({ day: d.toLocaleDateString('en-PH', { weekday: 'short' }), rev });
+        }
+        const max = Math.max(...days.map(d => d.rev), 1);
+        return days.map(d => ({ ...d, pct: Math.round((d.rev / max) * 100) }));
+      },
+
+      init() {
+        const session = DB.getSession();
+        if (!session || session.role !== 'merchant') {
+          window.location.href = '/index.html';
+          return;
+        }
+        this.session = session;
+        this.user = session.user;
+        this.loadMerchant();
+        this.loadAll();
+        this.initMap();
+        this.lastPendingCount = this.pendingOrders.length;
+        this.pollInterval = setInterval(() => this.pollOrders(), 4000);
+        this.timerInterval = setInterval(() => this.tickTimers(), 1000);
+      },
+
+      loadMerchant() {
+        const merchants = DB.read(DB.KEYS.merchants, []);
+        this.merchant = merchants.find(m => m.userId === this.user.id) || merchants[0];
+        this.merchantId = this.merchant?.id || 'm_cdo_food';
+        this.profileForm = {
+          name: this.user.name,
+          email: this.user.email,
+          phone: this.user.phone || '',
+          barangay: this.user.barangay || 'Carmen',
+          storeName: this.merchant?.name || this.user.storeName || '',
+          password: '',
+        };
+      },
+
+      loadAll() {
+        const inv = DB.read(DB.KEYS.inventory, {});
+        this.inventory = inv[this.merchantId] || [];
+        const hasCourier = this.inventory.some(i => i.category === 'Courier/Others');
+        if (!hasCourier) {
+          this.inventory.push({
+            id: 'c1',
+            name: 'Document Pouch Dispatch',
+            price: 80,
+            stock: 200,
+            category: 'Courier/Others',
+            img: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=200&q=80',
+          });
+          this.saveInventory();
+        }
+        this.wallet = DB.getWallet(this.user.id);
+        this.reviews = DB.read(DB.KEYS.reviews, []).filter(r => r.merchantId === this.merchantId);
+        this.disputes = DB.read(DB.KEYS.disputes, []);
+        this.promos = DB.read(DB.KEYS.promos, []);
+        this.auditLogs = DB.read(DB.KEYS.audit, []);
+        this.drivers = DB.read(DB.KEYS.drivers, []);
+        this.flashSales = DB.read('higala_flash_sales', []).filter(f => f.merchantId === this.merchantId);
+      },
+
+      saveInventory() {
+        const inv = DB.read(DB.KEYS.inventory, {});
+        inv[this.merchantId] = this.inventory;
+        DB.write(DB.KEYS.inventory, inv);
+      },
+
+      initMap() {
+        this.$nextTick(() => {
+          if (this.map) return;
+          const el = document.getElementById('map');
+          if (!el || typeof L === 'undefined') return;
+          this.map = L.map('map').setView([8.4822, 124.6471], 13);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+          }).addTo(this.map);
+          L.marker([8.4822, 124.6471]).addTo(this.map)
+            .bindPopup(this.merchant?.name || 'Your Store').openPopup();
+        });
+      },
+
+      pollOrders() {
+        const count = this.pendingOrders.length;
+        if (count > this.lastPendingCount) {
+          this.triggerNewOrderAlert();
+        }
+        this.lastPendingCount = count;
+      },
+
+      triggerNewOrderAlert() {
+        this.flashAlert = true;
+        setTimeout(() => { this.flashAlert = false; }, 2000);
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.value = 880;
+          gain.gain.value = 0.3;
+          osc.start();
+          osc.stop(ctx.currentTime + 0.3);
+          setTimeout(() => {
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.frequency.value = 1100;
+            gain2.gain.value = 0.3;
+            osc2.start();
+            osc2.stop(ctx.currentTime + 0.3);
+          }, 350);
+        } catch (e) { /* audio blocked */ }
+      },
+
+      fmt(n) { return DB.money(n); },
+
+      fmtDate(iso) {
+        if (!iso) return '—';
+        return new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      },
+
+      commissionOf(order) {
+        return DB.calcCommissionBreakdown(order);
+      },
+
+      statusClass(status) {
+        const map = {
+          pending: 'bg-amber-100 text-amber-800',
+          accepted: 'bg-blue-100 text-blue-800',
+          preparing: 'bg-orange-100 text-orange-800',
+          ready: 'bg-purple-100 text-purple-800',
+          completed: 'bg-emerald-100 text-emerald-800',
+          rejected: 'bg-rose-100 text-rose-800',
+          cancelled: 'bg-rose-100 text-rose-800',
+        };
+        return map[status] || 'bg-slate-100 text-slate-700';
+      },
+
+      acceptOrder(order) {
+        DB.updateOrder(order.id, { status: 'accepted' });
+        DB.audit('merchant.accept', { orderId: order.id, merchantId: this.merchantId });
+        this.lastPendingCount = this.pendingOrders.length;
+      },
+
+      rejectOrder(order) {
+        DB.updateOrder(order.id, { status: 'rejected' });
+        DB.audit('merchant.reject', { orderId: order.id });
+        this.lastPendingCount = this.pendingOrders.length;
+      },
+
+      setOrderStatus(orderId, status) {
+        DB.updateOrder(orderId, { status });
+        if (status === 'completed') {
+          const order = DB.getOrders().find(o => o.id === orderId);
+          if (order) {
+            const net = this.commissionOf(order).merchantNet;
+            const w = DB.getWallet(this.user.id);
+            w.balance = Math.round((w.balance + net) * 100) / 100;
+            w.history.unshift({ type: 'order_earning', amount: net, note: orderId, at: new Date().toISOString() });
+            const wallets = DB.read(DB.KEYS.wallet, {});
+            wallets[this.user.id] = w;
+            DB.write(DB.KEYS.wallet, wallets);
+            this.wallet = w;
+          }
+        }
+      },
+
+      toggleStoreOpen() {
+        const merchants = DB.read(DB.KEYS.merchants, []);
+        const idx = merchants.findIndex(m => m.id === this.merchantId);
+        if (idx >= 0) {
+          merchants[idx].open = !merchants[idx].open;
+          DB.write(DB.KEYS.merchants, merchants);
+          this.merchant = merchants[idx];
+          DB.audit('merchant.toggle_open', { open: this.merchant.open });
+        }
+      },
+
+      handleImageUpload(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => { this.itemForm.img = reader.result; };
+        reader.readAsDataURL(file);
+      },
+
+      openItemModal(item) {
+        this.itemForm = item
+          ? { ...item }
+          : { id: null, name: '', price: 0, stock: 0, category: 'Meals', img: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=200&q=80' };
+        this.showItemModal = true;
+      },
+
+      saveItem() {
+        if (!this.itemForm.name) return;
+        if (this.itemForm.id) {
+          const idx = this.inventory.findIndex(i => i.id === this.itemForm.id);
+          if (idx >= 0) this.inventory[idx] = { ...this.itemForm };
+        } else {
+          this.itemForm.id = DB.uid('item');
+          this.inventory.push({ ...this.itemForm });
+        }
+        this.saveInventory();
+        DB.audit('merchant.inventory_save', { itemId: this.itemForm.id, name: this.itemForm.name });
+        this.showItemModal = false;
+      },
+
+      deleteItem(item) {
+        if (!confirm('Delete "' + item.name + '"?')) return;
+        this.inventory = this.inventory.filter(i => i.id !== item.id);
+        this.saveInventory();
+        DB.audit('merchant.inventory_delete', { itemId: item.id });
+      },
+
+      startTimer() {
+        if (!this.timerLabel.trim()) return;
+        this.prepTimers.push({
+          id: DB.uid('timer'),
+          label: this.timerLabel,
+          remaining: (this.timerMins || 15) * 60,
+        });
+        this.timerLabel = '';
+      },
+
+      removeTimer(id) {
+        this.prepTimers = this.prepTimers.filter(t => t.id !== id);
+      },
+
+      tickTimers() {
+        this.prepTimers.forEach(t => { if (t.remaining > 0) t.remaining--; });
+      },
+
+      formatTimer(secs) {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return m + ':' + String(s).padStart(2, '0');
+      },
+
+      requestPayout() {
+        const amt = Number(this.payout.amount);
+        if (!amt || amt < 100) { alert('Minimum payout is ₱100.'); return; }
+        if (!this.payout.account) { alert('Enter your account number.'); return; }
+        const r = DB.walletDeduct(this.user.id, amt, 'Payout to ' + this.payout.method + ' ' + this.payout.account);
+        if (!r.ok) { alert(r.error); return; }
+        this.wallet = r.wallet;
+        DB.audit('merchant.payout', { amount: amt, method: this.payout.method });
+        alert('Payout request of ' + this.fmt(amt) + ' submitted via ' + this.payout.method + '!');
+        this.payout.amount = 0;
+      },
+
+      createFlashSale() {
+        const item = this.inventory.find(i => i.id === this.flashSale.itemId);
+        if (!item) { alert('Select an item.'); return; }
+        const sale = {
+          id: DB.uid('flash'),
+          merchantId: this.merchantId,
+          itemId: item.id,
+          itemName: item.name,
+          discount: this.flashSale.discount,
+          endsAt: this.flashSale.endsAt || new Date(Date.now() + 3600000).toISOString(),
+        };
+        this.flashSales.push(sale);
+        const all = DB.read('higala_flash_sales', []);
+        all.push(sale);
+        DB.write('higala_flash_sales', all);
+        DB.audit('merchant.flash_sale', { itemId: item.id, discount: sale.discount });
+        alert('Flash sale launched for ' + item.name + '!');
+      },
+
+      endFlashSale(id) {
+        this.flashSales = this.flashSales.filter(f => f.id !== id);
+        const all = DB.read('higala_flash_sales', []).filter(f => f.id !== id);
+        DB.write('higala_flash_sales', all);
+      },
+
+      savePromo() {
+        if (!this.promoForm.code) return;
+        const code = this.promoForm.code.toUpperCase();
+        const idx = this.promos.findIndex(p => p.code === code);
+        const promo = { ...this.promoForm, code, active: true };
+        if (idx >= 0) this.promos[idx] = promo;
+        else this.promos.push(promo);
+        DB.write(DB.KEYS.promos, this.promos);
+        DB.audit('merchant.promo_save', { code });
+        this.promoForm = { code: '', type: 'flat', value: 50, minSubtotal: 200 };
+      },
+
+      togglePromo(p) {
+        p.active = !p.active;
+        DB.write(DB.KEYS.promos, this.promos);
+      },
+
+      exportOrdersCSV() {
+        const rows = [['Order ID', 'Customer', 'Subtotal', 'Total', 'Commission', 'Net', 'Status', 'Date']];
+        this.merchantOrders.forEach(o => {
+          const c = this.commissionOf(o);
+          rows.push([o.id, o.customerName, o.subtotal, o.total, c.merchantCut, c.merchantNet, o.status, o.createdAt]);
+        });
+        const csv = rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'higala_orders_' + DB.todayKey() + '.csv';
+        a.click();
+        DB.audit('merchant.export_csv', { count: this.merchantOrders.length });
+      },
+
+      saveProfile() {
+        const patch = {
+          name: this.profileForm.name,
+          phone: this.profileForm.phone,
+          barangay: this.profileForm.barangay,
+        };
+        if (this.profileForm.password) patch.password = this.profileForm.password;
+        DB.updateUser(this.user.id, patch);
+        const merchants = DB.read(DB.KEYS.merchants, []);
+        const idx = merchants.findIndex(m => m.id === this.merchantId);
+        if (idx >= 0) {
+          merchants[idx].name = this.profileForm.storeName;
+          DB.write(DB.KEYS.merchants, merchants);
+          this.merchant = merchants[idx];
+        }
+        this.user = DB.getSession().user;
+        alert('Profile saved!');
+      },
+
+      logout() {
+        DB.logout();
+        window.location.href = '/index.html';
+      },
+    };
+  }
+  </script>
+</body>
+</html>

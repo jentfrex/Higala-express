@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HigalaExpress - Courier & Parcel Delivery (CDO)</title>
+    <!-- Leaflet CSS kung gigamit sa map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary-color: #FF6600;
+            --primary-dark: #e55c00;
+            --bg-color: #f8f9fa;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+
+        h2 {
+            color: var(--primary-color);
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Items Container gikan sa renderCourierUI() */
+        #itemsContainer {
+            margin-bottom: 20px;
+        }
+
+        .item-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-left: 4px solid var(--primary-color);
+            margin-bottom: 12px;
+            background: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+
+        .item-row:hover {
+            transform: translateY(-2px);
+        }
+
+        .item-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .item-emoji {
+            font-size: 32px;
+        }
+
+        .item-details h4 {
+            margin: 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .item-details p {
+            margin: 4px 0;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .item-price {
+            font-size: 12px;
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+
+        .action-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .action-btn:hover {
+            background: var(--primary-dark);
+        }
+
+        /* Modal Styles */
+        .courier-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .courier-modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #888;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #444;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 15px 0;
+        }
+
+        .checkbox-group input {
+            width: 18px;
+            height: 18px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-footer button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-secondary:hover { background: #d0d0d0; }
+        .btn-primary:hover { background: var(--primary-dark); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>🛵 HigalaExpress Courier (CDO)</h2>
+        <p style="text-align: center; font-size: 14px; color: #666; margin-bottom: 20px;">
+            Pilia ang sakyanan para sa imong dokumento o pakete sulod sa Cagayan de Oro City.
+        </p>
+
+        <!-- Dinhi igawas sa courier.js ang mga serbisyo -->
+        <div id="itemsContainer"></div>
+    </div>
+
+    <!-- Courier Booking Modal -->
+    <div id="courierModal" class="courier-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📦 Detalye sa Padad-an (CDO)</h3>
+                <button class="close-btn" onclick="closeCourierModal()">&times;</button>
+            </div>
+
+            <!-- Hidden input para sa napiling Courier Type -->
+            <input type="hidden" id="selectedCourierType">
+
+            <div class="form-group">
+                <label for="receiverName">Ngalan sa Makadawat (Receiver Full Name)</label>
+                <input type="text" id="receiverName" placeholder="Pananglitan: Juan Dela Cruz">
+            </div>
+
+            <div class="form-group">
+                <label for="receiverPhone">Phone Number (Globe/TM/Smart)</label>
+                <input type="text" id="receiverPhone" placeholder="0917XXXXXXX">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="receiverBarangay">Barangay sa CDO</label>
+                    <select id="receiverBarangay">
+                        <option value="">Pili og Barangay</option>
+                        <!-- Awtomatikong pun-on sa courier.js -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="receiverZone">Zone / Purok / Block</label>
+                    <input type="text" id="receiverZone" placeholder="Zone 3, Blk 5">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="receiverAddress">Tibuok Address / Landmark</label>
+                <input type="text" id="receiverAddress" placeholder="Apit sa eskwater o atbang sa convenience store">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="packageWeight">Timbang (Weight sa Kg)</label>
+                    <input type="number" id="packageWeight" value="1.0" min="0.1" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label for="itemPrice">Presyo sa Item (Kung COD)</label>
+                    <input type="number" id="itemPrice" value="0.00" min="0" step="50">
+                </div>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="isCodCheckbox">
+                <label for="isCodCheckbox" style="margin: 0; cursor: pointer;">Kini ba kay Cash on Delivery (COD Collection)?</label>
+            </div>
+
+            <div class="form-group">
+                <label for="deliveryNotes">Mensahe o Instruksyon sa Rider</label>
+                <textarea id="deliveryNotes" rows="2" placeholder="Palihug tawagi pag abot sa gate..."></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="addDropoffStop()">+ Dugang Stop (Multi-Stop)</button>
+                <button type="button" class="btn-primary" onclick="submitCourierToCart()">I-add sa Cart</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="courier.js"></script>
+    <script>
+        // Automatic i-render ang UI pag-load sa panid
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof renderCourierUI === 'function') {
+                renderCourierUI();
+            }
+        });
+    </script>
+</body>
+</html>

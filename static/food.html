@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - Food Delivery</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+        header { text-align: center; margin-bottom: 2rem; }
+        header h2 { color: #0f172a; margin-bottom: 0.5rem; }
+        .food-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .item-row {
+            background: white;
+            padding: 15px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .item-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .item-thumb {
+            width: 70px;
+            height: 70px;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+        .item-details h4 { margin: 0 0 5px 0; color: #1e293b; }
+        .item-details p { margin: 0 0 5px 0; font-size: 0.85rem; color: #64748b; }
+        .item-price { font-weight: bold; color: #059669; }
+        .action-btn {
+            background-color: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .action-btn:hover { background-color: dc2626; }
+    </style>
+</head>
+<body onload="renderFoodUI()">
+
+    <header>
+        <h2>🍽️ Higala Food Delivery</h2>
+        <p>Pilia ang imong paboritong pagkaon direkta sa CDO</p>
+    </header>
+
+    <main class="food-container">
+        <!-- Dinhi ibutang sa food.js ang mga items gamit ang itemsContainer ID -->
+        <div id="itemsContainer"></div>
+    </main>
+
+    <!-- Kinahanglan mauna ang config.js sa pag-load -->
+    <script src="static/js/config.js"></script>
+    <script src="static/js/food.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Super App - Driver Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        amberGold: '#f59e0b',
+                        darkBg: '#0f172a'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkBg text-white min-h-screen flex flex-col">
+    <header class="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
+        <h1 class="text-xl font-bold text-amberGold">Higala Driver</h1>
+        <span id="status" class="text-sm bg-amber-500/10 text-amber-500 px-3 py-1 rounded-full border border-amber-500/20">Offline</span>
+    </header>
+    <main class="flex-1 p-4 flex flex-col items-center justify-center">
+        <p class="text-slate-400 mb-4">Welcome to the CDO Driver Portal</p>
+        <button id="toggleShift" class="bg-amberGold text-slate-950 font-semibold px-6 py-3 rounded-xl shadow-lg hover:bg-amber-400 transition">
+            Start Shift
+        </button>
+    </main>
+</body>
+</html>

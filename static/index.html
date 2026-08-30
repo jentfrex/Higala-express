@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f59e0b">
+  <title>Higala Express — Cagayan de Oro Superapp</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="/js/higala-db.js"></script>
+  <style>
+    [x-cloak]{display:none!important}
+    body{font-family:"DM Sans",system-ui,sans-serif}
+    .liquid-header{background:linear-gradient(135deg,rgba(217,119,6,.9),rgba(245,158,11,.7),rgba(254,243,199,.85));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+    .glass{background:rgba(255,255,255,.88);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.6)}
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-amber-50 via-white to-amber-100 text-slate-900" x-data="portalApp()" x-init="init()" x-cloak>
+
+  <header class="liquid-header sticky top-0 z-50 border-b border-white/40">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+      <div class="flex items-center gap-3">
+        <div class="grid h-11 w-11 place-items-center rounded-2xl bg-white/30 text-lg font-black text-amber-950 shadow">H</div>
+        <div>
+          <div class="font-[Manrope] text-lg font-extrabold text-amber-950">Higala Express</div>
+          <div class="text-[10px] font-bold uppercase tracking-wider text-amber-900/80">Cagayan de Oro · Philippines</div>
+        </div>
+      </div>
+      <a href="customer.html" class="rounded-xl bg-white/70 px-3 py-2 text-xs font-extrabold text-amber-900 shadow-sm">Browse as Guest →</a>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+    <section class="mb-8 text-center">
+      <h1 class="font-[Manrope] text-3xl font-extrabold sm:text-4xl">Your CDO Superapp Platform</h1>
+      <p class="mx-auto mt-2 max-w-2xl text-sm text-slate-600">Rides, food, groceries, pharmacy, courier — one unified ecosystem for customers, merchants, drivers, and admins.</p>
+    </section>
+
+    <div class="grid gap-6 lg:grid-cols-2">
+      <!-- Login -->
+      <div class="glass rounded-3xl p-6 shadow-xl">
+        <h2 class="font-[Manrope] text-xl font-extrabold">Sign In</h2>
+        <p class="mt-1 text-xs text-slate-500">Route instantly to your role dashboard.</p>
+        <p x-show="error" x-text="error" class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"></p>
+        <form @submit.prevent="login()" class="mt-4 space-y-3">
+          <input x-model="form.email" type="email" required placeholder="Email" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <input x-model="form.password" type="password" required placeholder="Password" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <button type="submit" class="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 py-3 text-sm font-extrabold text-amber-950">Log In &amp; Go to Dashboard</button>
+        </form>
+      </div>
+
+      <!-- Register -->
+      <div class="glass rounded-3xl p-6 shadow-xl">
+        <h2 class="font-[Manrope] text-xl font-extrabold">Create Account</h2>
+        <form @submit.prevent="register()" class="mt-4 space-y-3">
+          <input x-model="reg.name" type="text" required placeholder="Full name" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <input x-model="reg.email" type="email" required placeholder="Email" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <input x-model="reg.phone" type="tel" placeholder="Mobile number" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <select x-model="reg.role" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+            <option value="customer">Customer</option>
+          </select>
+          <select x-model="reg.barangay" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+            <template x-for="b in barangays" :key="b"><option :value="b" x-text="b"></option></template>
+          </select>
+          <input x-model="reg.password" type="password" required minlength="6" placeholder="Password" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+          <button type="submit" class="w-full rounded-xl bg-slate-900 py-3 text-sm font-extrabold text-white">Register &amp; Continue</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Public role card: Customer only -->
+    <section class="mt-8 grid gap-4 sm:grid-cols-1 max-w-md mx-auto">
+      <a href="customer.html" class="glass rounded-2xl p-4 shadow-lg transition hover:-translate-y-0.5">
+        <div class="text-2xl">🛒</div>
+        <h3 class="mt-2 font-extrabold">Customer App</h3>
+        <p class="mt-1 text-xs text-slate-500">Order food, rides, groceries & more</p>
+      </a>
+    </section>
+  </main>
+
+  <script>
+  function portalApp() {
+    const DB = window.HigalaDB;
+    return {
+      form: { email: 'customer@higala.ph', password: 'customer123' },
+      reg: { name: '', email: '', phone: '', password: '', role: 'customer', barangay: 'Carmen' },
+      error: '',
+      barangays: DB.BARANGAYS,
+      init() {
+        const s = DB.getSession();
+        if (s) window.location.href = DB.ROUTES[s.role] || 'customer.html';
+      },
+      login() {
+        this.error = '';
+        const r = DB.login(this.form.email, this.form.password);
+        if (!r.ok) { this.error = r.error; return; }
+        window.location.href = r.route;
+      },
+      register() {
+        this.error = '';
+        const r = DB.register(this.reg);
+        if (!r.ok) { this.error = r.error; return; }
+        DB.login(this.reg.email, this.reg.password);
+        window.location.href = DB.ROUTES[this.reg.role];
+      },
+    };
+  }
+  </script>
+</body>
+</html>

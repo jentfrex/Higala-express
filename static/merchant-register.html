@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Merchant Registration Hub</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        amberCustom: '#D97706',
+                        amberHover: '#B45309',
+                        amberLight: '#FEF3C7',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .liquid-bg {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1;
+            background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 50%, #FDE68A 100%);
+            overflow: hidden;
+        }
+        .bubble {
+            position: absolute; filter: blur(80px); opacity: 0.6; border-radius: 50%;
+            animation: floatBubble 15s infinite alternate ease-in-out;
+        }
+        .bubble-1 { width: 400px; height: 400px; background: rgba(217, 119, 6, 0.25); top: -100px; left: -100px; }
+        .bubble-2 { width: 500px; height: 500px; background: rgba(245, 158, 11, 0.2); bottom: -150px; right: -100px; animation-delay: -5s; }
+        @keyframes floatBubble {
+            0% { transform: translateY(0px) translateX(0px) scale(1); }
+            50% { transform: translateY(30px) translateX(20px) scale(1.05); }
+            100% { transform: translateY(-30px) translateX(-20px) scale(0.95); }
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+        }
+    </style>
+</head>
+<body class="text-slate-800 font-sans antialiased min-h-screen relative flex items-center justify-center p-4 sm:p-6" x-data="merchantRegisterApp()">
+
+    <!-- Liquid Background -->
+    <div class="liquid-bg">
+        <div class="bubble bubble-1"></div>
+        <div class="bubble bubble-2"></div>
+    </div>
+
+    <!-- REGISTRATION CARD -->
+    <div class="glass-card w-full max-w-2xl p-6 sm:p-8 rounded-3xl shadow-2xl border border-white my-8">
+        <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-amberCustom rounded-2xl mx-auto flex items-center justify-center text-white font-black text-3xl shadow-lg mb-3">H</div>
+            <h2 class="text-2xl font-black text-slate-900">Higala Merchant Registration</h2>
+            <p class="text-xs text-slate-600 mt-1">Field Onboarding & Partnership Agreement (CDO Area)</p>
+        </div>
+
+        <form @submit.prevent="submitRegistration" class="space-y-5">
+            
+            <!-- SECTION 1: Basic Info -->
+            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
+                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">1. Impormasyon sa Negosyo ug Tag-iya</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Pangalan sa Negosyo (Store Name)</label>
+                        <input type="text" x-model="regForm.storeName" placeholder="Pananglitan: Cagayan Rice Trading" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Pangalan sa Tag-iya (Owner Name)</label>
+                        <input type="text" x-model="regForm.ownerName" placeholder="Pananglitan: Juan dela Cruz" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Contact Number (Globe/TM/Smart)</label>
+                        <input type="text" x-model="regForm.contact" placeholder="0917-xxx-xxxx" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Kategorya sa Negosyo</label>
+                        <select x-model="regForm.category" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                            <option value="Bigasan / Rice Retail">Bigasan / Rice Retail</option>
+                            <option value="Sari-Sari Store">Sari-Sari Store</option>
+                            <option value="Food / Meals">Food / Meals</option>
+                            <option value="Groceries / Retail">Groceries / Retail</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: Location & CDO Barangay -->
+            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
+                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">2. Lokasyon sa CDO & Delivery Radius</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Barangay sa CDO</label>
+                        <select x-model="regForm.barangay" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                            <option value="Carmen">Carmen</option>
+                            <option value="Divisoria">Divisoria</option>
+                            <option value="Kauswagan">Kauswagan</option>
+                            <option value="Cugman">Cugman</option>
+                            <option value="Bulua">Bulua</option>
+                            <option value="Nazareth">Nazareth</option>
+                            <option value="Lapasan">Lapasan</option>
+                            <option value="Macasandig">Macasandig</option>
+                            <option value="Iponan">Iponan</option>
+                            <option value="Puntod">Puntod</option>
+                            <option value="Uptown / Carmen Hill">Uptown / Carmen Hill</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Eksaktong Street / Landmark</label>
+                        <input type="text" x-model="regForm.address" placeholder="Pananglitan: Near Public Market, Osmeña St." class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Delivery Coverage / Radius</label>
+                    <input type="text" x-model="regForm.deliveryRadius" placeholder="Pananglitan: Within Carmen & Divisoria only" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                </div>
+            </div>
+
+            <!-- SECTION 3: Initial Inventory & Operating Hours -->
+            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
+                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">3. Unang Produkto (Initial Catalog) & Oras sa Tindahan</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Ngalan sa Produkto</label>
+                        <input type="text" x-model="regForm.productName" placeholder="Dinorado Special Rice" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Presyo (₱) ug Unit</label>
+                        <input type="text" x-model="regForm.productPrice" placeholder="₱1,250 / 50kg Sack" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Oras sa Tindahan (Hours)</label>
+                        <input type="text" x-model="regForm.operatingHours" placeholder="8:00 AM - 7:00 PM" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 4: GCash / Payout & Processing Fee Model -->
+            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
+                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">4. Payout Account & Partnership Terms</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">GCash / Maya Number para sa Remittance</label>
+                        <input type="text" x-model="regForm.payoutAccount" placeholder="0917-xxx-xxxx (Account Name)" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Onboarding / Processing Fee Agreement</label>
+                        <select x-model="regForm.feeOption" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                            <option value="Free Promo (0% Setup Fee + 3% Commission per order)">Free Promo (0% Setup Fee + Commission per order)</option>
+                            <option value="Standard Setup (₱150 One-time Processing Fee)">Standard Setup (₱150 One-time Processing Fee)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 5: Digital Partnership Clause & Checkbox -->
+            <div class="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-300 space-y-2">
+                <h4 class="text-[11px] font-black text-slate-800 uppercase">📜 Kasabutan sa Partnership (Merchant Agreement)</h4>
+                <p class="text-[11px] text-slate-600 leading-relaxed">
+                    Pinaagi sa pag-apil sa <strong>Higala App</strong>, ang tag-iya nagpasalig nga ang mga produkto (pananglitan: bugas o baligya) saktong timbang, de-kalidad, ug mosunod sa napag-usapan nga presyo. Ang Higala App manguna sa pagdala og mga kustomer ug online orders ngadto sa tindahan. Ang kita o halin igahin pinaagi sa gikasabutan nga payout schedule.
+                </p>
+                <div class="flex items-start gap-2 pt-1">
+                    <input type="checkbox" x-model="regForm.agreeTerms" id="terms" class="mt-0.5 rounded border-slate-300 text-amberCustom focus:ring-amberCustom" required>
+                    <label for="terms" class="text-[11px] font-bold text-slate-800 leading-tight">
+                        Nagpamatuod ako nga miuyon sa tibuok Kasabutan sa Partnership ug gihatagan og katungod ang Higala App sa pag-onboard sa among negosyo.
+                    </label>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="pt-2 flex gap-3">
+                <a href="/static/merchant.html" class="flex-1 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-center text-xs transition">Balik sa Dashboard</a>
+                <button type="submit" class="flex-1 py-3 bg-amberCustom hover:bg-amberHover text-white font-black rounded-xl text-xs shadow-lg transition">I-submit & I-sync sa Sistema</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Alpine Script -->
+    <script>
+        function merchantRegisterApp() {
+            return {
+                regForm: {
+                    storeName: '',
+                    ownerName: '',
+                    contact: '',
+                    category: 'Bigasan / Rice Retail',
+                    barangay: 'Carmen',
+                    address: '',
+                    deliveryRadius: '',
+                    productName: '',
+                    productPrice: '',
+                    operatingHours: '',
+                    payoutAccount: '',
+                    feeOption: 'Free Promo (0% Setup Fee + 3% Commission per order)',
+                    agreeTerms: false
+                },
+                submitRegistration() {
+                    if (!this.regForm.agreeTerms) {
+                        alert('Palihog i-check ug i-aprubahan ang Kasabutan sa Partnership.');
+                        return;
+                    }
+                    
+                    let existingPending = JSON.parse(localStorage.getItem('pendingMerchants') || '[]');
+                    let newMerchant = {
+                        id: Date.now(),
+                        ...this.regForm,
+                        timestamp: new Date().toLocaleString()
+                    };
+                    existingPending.push(newMerchant);
+                    localStorage.setItem('pendingMerchants', JSON.stringify(existingPending));
+
+                    alert('Tagumpay! Na-encode na ang merchant ug na-sync sa Pending Requests queue sa admin system.');
+                    window.location.href = '/static/admin.html';
+                }
+            }
+        }
+    </script>
+</body>
+</html>

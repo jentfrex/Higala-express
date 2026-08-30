@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Health - CDO Pharmacy Super-Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div class="max-w-4xl mx-auto p-6">
+        <header class="bg-white shadow rounded-lg p-6 mb-6 flex justify-between items-center">
+            <div>
+                <h1 id="sectionTitle" class="text-2xl font-bold text-green-600">💊 Higala Pharma & Meds (Masterplan Integrated)</h1>
+                <p id="sectionSub" class="text-gray-500 text-sm">Paspas nga pagpalit, AI Prescription Reader, ug LGU Subsidized Wallet sa CDO.</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="bg-green-100 text-green-800 px-4 py-2 rounded-full text-xs font-bold shadow-sm flex items-center gap-2">
+                    <span>🛒 Cart:</span> <span id="cartBadge" class="text-sm font-extrabold">0</span>
+                </div>
+                <a href="/customer" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium">Back to Home</a>
+            </div>
+        </header>
+
+        <main class="bg-white shadow rounded-lg p-6">
+            <!-- Masterplan Container where pharmacy.js dynamically loads LGU Wallet, AI Scanner, and Meds Grid -->
+            <div id="itemsContainer">
+                <!-- Fallback static items if JS loads later -->
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Available Medicines & Supplies</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="border border-gray-200 rounded-lg p-4 flex justify-between items-center shadow-sm">
+                        <div>
+                            <h3 class="font-bold text-gray-800">Biogesic (Paracetamol)</h3>
+                            <p class="text-sm text-gray-500">500mg tablet - 10s</p>
+                            <p class="text-green-600 font-semibold mt-1">₱55.00</p>
+                        </div>
+                        <button onclick="handleAddToCart('Biogesic (Paracetamol)', 55.00, '500mg tablet - 10s')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-transform active:scale-95 shadow">Add</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Load the masterplan pharmacy script -->
+    <script src="/static/js/pharmacy.js"></script>
+    <script>
+        // Local fallback cart array if pharmacy.js doesn't manage global count instantly
+        let localCartCount = 0;
+
+        function handleAddToCart(name, price, desc) {
+            localCartCount++;
+            
+            // 1. I-update ang UI Badge direkta
+            const badge = document.getElementById('cartBadge');
+            if (badge) {
+                badge.innerText = localCartCount;
+            }
+
+            // 2. Tawgon ang cdoPharmacy object kung anaa sa pharmacy.js
+            if (window.cdoPharmacy && typeof window.cdoPharmacy.addToCart === 'function') {
+                window.cdoPharmacy.addToCart(name, price, desc);
+            } else {
+                console.log("Added to cart locally:", name, price);
+            }
+        }
+
+        // Auto-render UI on load if class is available
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.cdoPharmacy && typeof window.cdoPharmacy.renderPharmacyUI === 'function') {
+                window.cdoPharmacy.renderPharmacyUI();
+            }
+        });
+    </script>
+</body>
+</html>
