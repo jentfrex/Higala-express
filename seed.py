@@ -1,24 +1,35 @@
 import models
 from database import SessionLocal
 from passlib.context import CryptContext
+from datetime import datetime
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def seed_database():
     db = SessionLocal()
     try:
-        # Check if test customer already exists
-        existing_user = (
-            db.query(models.User)
-            .filter(models.User.username == "test_customer")
-            .first()
-        )
+        # 1. Check if admin/ajentq account already exists
+        existing_admin = db.query(models.User).filter(models.User.username == "ajentq").first()
+        if not existing_admin:
+            hashed_pw = pwd_context.hash("101391@Jent")
+            admin_user = models.User(
+                username="ajentq",
+                hashed_password=hashed_pw,
+                role="admin",  # o unsa man ang saktong role
+                wallet_balance=5000.0,
+                status="online"
+            )
+            db.add(admin_user)
+            db.commit()
+            print("Successfully created 'ajentq' account!")
+
+        # 2. Check if test customer already exists
+        existing_user = db.query(models.User).filter(models.User.username == "test_customer").first()
 
         if not existing_user:
             hashed_pw = pwd_context.hash("password123")
 
-            # 1. Create Test Customers
+            # Create Test Customers
             customer1 = models.User(
                 username="test_customer",
                 hashed_password=hashed_pw,
@@ -33,7 +44,7 @@ def seed_database():
             )
             db.add_all([customer1, customer2])
 
-            # 2. Create Test Drivers
+            # Create Test Drivers
             driver1 = models.User(
                 username="test_driver",
                 hashed_password=hashed_pw,
@@ -51,7 +62,7 @@ def seed_database():
             db.add_all([driver1, driver2])
             db.commit()
 
-            # 3. Create Sample Orders (Required for foreign keys in tickets/reviews)
+            # Create Sample Orders
             order1 = models.Order(
                 item_description="Groceries package",
                 pickup_location="CdeO Uptown",
@@ -78,16 +89,15 @@ def seed_database():
             )
             db.add_all([order1, order2])
             db.commit()
-
             print("Successfully seeded users and base orders!")
         else:
             print("Database already contains seed data.")
+
     except Exception as e:
         print(f"Error seeding database: {e}")
         db.rollback()
     finally:
         db.close()
-
 
 if __name__ == "__main__":
     seed_database()
