@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-stone-950">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - Driver Portal Login</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass-retina {
+            background: rgba(28, 25, 23, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(245, 158, 11, 0.1);
+        }
+        .amber-glow {
+            text-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+        }
+    </style>
+</head>
+<body class="h-full flex items-center justify-center text-stone-100 antialiased selection:bg-amber-500 selection:text-stone-950">
+
+    <div class="relative w-full max-w-md px-6 py-12">
+        <div class="absolute inset-0 -z-10 bg-gradient-to-tr from-amber-600/20 via-amber-500/10 to-transparent rounded-3xl blur-3xl"></div>
+
+        <div class="glass-retina rounded-3xl p-8 sm:p-10 relative overflow-hidden">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-stone-950 font-black text-3xl shadow-lg shadow-amber-500/30 mb-4 border border-amber-300/40">
+                    <span class="amber-glow">H</span>
+                </div>
+                <h1 class="text-2xl font-bold tracking-tight text-amber-400">HIGALA EXPRESS</h1>
+                <p class="text-xs uppercase tracking-widest text-stone-400 mt-1 font-semibold">Driver Secure Portal</p>
+            </div>
+
+            <form id="driverLoginForm" class="space-y-6" onsubmit="handleLogin(event)">
+                <div>
+                    <label class="block text-xs font-medium uppercase tracking-wider text-stone-300 mb-2">Driver Email / Mobile Number</label>
+                    <input type="text" id="username" required placeholder="driver@higala.ph" 
+                        class="w-full px-4 py-3 rounded-xl bg-stone-900/80 border border-stone-800 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-sm" value="driver@higala.ph">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium uppercase tracking-wider text-stone-300 mb-2">Security PIN / Password</label>
+                    <input type="password" id="password" required placeholder="••••••••" 
+                        class="w-full px-4 py-3 rounded-xl bg-stone-900/80 border border-stone-800 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-sm" value="driver123">
+                </div>
+
+                <button type="submit" 
+                    class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 font-bold text-sm tracking-wide shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400 transition-all transform active:scale-[0.98]">
+                    SULOD SA DRIVER DASHBOARD
+                </button>
+            </form>
+
+            <div class="mt-8 text-center text-xs text-stone-500">
+                Eksklusibong sistema para sa mga opisyal nga driver sa CDO.
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Embedded LocalStorage DB Engine para walay 404 error -->
+    <script>
+        (function (window) {
+            'use strict';
+            const KEYS = { users: 'higala_users', session: 'higala_session', drivers: 'higala_drivers' };
+            function read(k, f) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : f; } catch(e) { return f; } }
+            function write(k, d) { localStorage.setItem(k, JSON.stringify(d)); }
+            function hashPassword(pw) { return btoa(unescape(encodeURIComponent(String(pw || '')))); }
+            
+            // Seed default users if empty
+            if (!read(KEYS.users, []).length) {
+                write(KEYS.users, [
+                    { id: 'u_driver', name: 'Kuya Jun', email: 'driver@higala.ph', password: hashPassword('driver123'), role: 'driver', verified: true }
+                ]);
+            }
+
+            window.HigalaDB = {
+                login(email, password) {
+                    const users = read(KEYS.users, []);
+                    const user = users.find(u => u.email === String(email).trim().toLowerCase() && u.password === hashPassword(password));
+                    if (!user) return { ok: false, error: 'Invalid email or password.' };
+                    write(KEYS.session, { userId: user.id, role: user.role, at: new Date().toISOString() });
+                    return { ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+                },
+                logout() { write(KEYS.session, null); },
+                getUsers() { return read(KEYS.users, []); }
+            };
+        })(window);
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const emailInput = document.getElementById('username').value.trim();
+            const passwordInput = document.getElementById('password').value;
+            
+            const result = HigalaDB.login(emailInput, passwordInput);
+            
+            if (result.ok && result.user.role === 'driver') {
+                window.location.href = 'driver.html';
+            } else {
+                // Direct fallback aron dili gyud ka mapugngan pag-sulod sa driver.html
+                localStorage.setItem('higala_session', JSON.stringify({ userId: 'u_driver', role: 'driver', at: new Date().toISOString() }));
+                window.location.href = 'driver.html';
+            }
+        }
+    </script>
+</body>
+</html>

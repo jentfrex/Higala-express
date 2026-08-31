@@ -782,7 +782,7 @@
 
     init() {
       const s = DB.requireRole('driver');
-      if (!s) { window.location.href = '/index.html'; return; }
+      if (!s) { window.location.href = window.location.origin + '/driver-login.html'; return; }
       this.session = s;
       this.user = s.user;
       this.loadDriver();
@@ -1169,10 +1169,10 @@
       }
     },
 
-    logout() {
-      DB.logout();
-      window.location.href = '/index.html';
-    },
+   logout() {
+            DB.logout();
+            window.location.href = window.location.origin + '/driver-login.html';
+        },
 
     timeAgo(iso) {
       const diff = Date.now() - new Date(iso).getTime();

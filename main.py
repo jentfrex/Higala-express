@@ -1609,3 +1609,24 @@ def secret_merchant_portal():
     if os.path.exists(file_path):
         return FileResponse(file_path)
     return HTMLResponse("<h1>404 - merchant.html wala makita</h1>", status_code=404)
+@app.get("/hq/portal/driver-apply", tags=["Secure Portals"], response_class=HTMLResponse)
+def secret_driver_apply_portal():
+    """Eksklusibong link para sa driver application form"""
+    file_path = os.path.join(_STATIC_DIR, "driver-apply.html")
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return HTMLResponse("<h1>404 - driver-apply.html wala makita</h1>", status_code=404)
+@app.get("/hq/portal/driver-login", tags=["Secure Portals"], response_class=HTMLResponse)
+def secret_driver_login_portal():
+    """Eksklusibong login link para sa mga approved drivers"""
+    file_path = os.path.join(_STATIC_DIR, "driver-login.html")
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return HTMLResponse("<h1>404 - driver-login.html wala makita</h1>", status_code=404)
+@app.get("/hq/portal/driver", tags=["Secure Portals"], response_class=HTMLResponse)
+def secret_driver_portal():
+    """Eksklusibong driver dashboard portal"""
+    file_path = os.path.join(_STATIC_DIR, "driver.html")
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return HTMLResponse("<h1>404 - driver.html wala makita</h1>", status_code=404)
