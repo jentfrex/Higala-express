@@ -68,3 +68,58 @@ class SupportTicketCreate(BaseModel):
     subject: str
     description: str
     order_id: Optional[int] = None
+
+
+# --- Request Schemas ---
+
+class RideBookingCreate(BaseModel):
+    service_type: str = "standard"
+    fare_amount: float = 50.0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FoodOrderCreate(BaseModel):
+    merchant_id: int
+    total_price: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SOSAlertCreate(BaseModel):
+    latitude: float
+    longitude: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Response / Output Schemas (Fixes FastAPI Return Type Errors) ---
+
+class RideBookingOut(BaseModel):
+    id: int
+    passenger_id: Optional[int] = None
+    service_type: str
+    fare_amount: float
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FoodOrderOut(BaseModel):
+    id: int
+    customer_id: Optional[int] = None
+    merchant_id: int
+    total_price: float
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SOSAlertOut(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    latitude: float
+    longitude: float
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)

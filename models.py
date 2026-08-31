@@ -361,3 +361,35 @@ class Ride(Base, SoftDeleteMixin):
     # Relationships
     passenger = relationship("User", foreign_keys=[passenger_id], back_populates="rides_as_passenger")
     driver = relationship("User", foreign_keys=[driver_id], back_populates="rides_as_driver")
+
+
+# --- Added Missing Models for main.py Routes ---
+
+class RideBooking(Base, SoftDeleteMixin):
+    __tablename__ = "ride_bookings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    passenger_id = Column(Integer, ForeignKey("users.id"), index=True)
+    service_type = Column(String, default="standard")
+    fare_amount = Column(Float, default=0.0)
+    status = Column(String, default="pending", index=True)
+
+
+class FoodOrder(Base, SoftDeleteMixin):
+    __tablename__ = "food_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("users.id"), index=True)
+    merchant_id = Column(Integer, ForeignKey("merchants.id"), index=True)
+    total_price = Column(Float, default=0.0)
+    status = Column(String, default="pending", index=True)
+
+
+class SOSAlert(Base, SoftDeleteMixin):
+    __tablename__ = "sos_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    status = Column(String, default="active", index=True)

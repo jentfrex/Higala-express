@@ -511,10 +511,38 @@
         this.courierOpen=false; this.cartOpen=true;
       },
 
-      topUpWallet() {
-        this.wallet = DB.walletTopUp(this.user.id, this.topUpAmount, this.topUpMethod);
-        this.toast('Wallet topped up!');
-      },
+    async topUpWallet() {
+            const amount = parseFloat(this.topUpAmount);
+            if (!amount || amount <= 0) {
+                this.toast('Palihug pagbutang og saktong kantidad.');
+                return;
+            }
+
+            this.toast('Nag-himo og secure payment link...');
+
+            try {
+                const response = await fetch('/api/wallet/topup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        amount: amount,
+                        user_id: this.user.id,
+                        method: this.topUpMethod
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok && result.checkout_url) {
+                    window.location.href = result.checkout_url;
+                } else {
+                    this.toast(result.detail || 'Napakyas sa paghimo og payment session.');
+                }
+            } catch (err) {
+                console.error(err);
+                this.toast('Naay error sa koneksyon sa server.');
+            }
+        },
 
       checkout() {
         if(!this.cart.length){this.toast('Cart empty.');return;}
