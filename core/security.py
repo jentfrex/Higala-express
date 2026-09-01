@@ -1,3 +1,8 @@
+"""
+Security and authentication module for Higala Express.
+Handles password hashing, JWT creation, token revoking, and role-based authorization.
+"""
+
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Union, List
 from fastapi import Depends, HTTPException, status
@@ -26,13 +31,16 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 # In-memory fallback token blacklist if Redis isn't running or configured
 _memory_blacklist = set()
 
-def verify_password(plain_password, hashed_password):
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against its hashed version."""
     return pwd_context.verify(plain_password, hashed_password)
 
-def get_password_hash(password):
+def get_password_hash(password: str) -> str:
+    """Generate a bcrypt hash of a plain password."""
     return pwd_context.hash(password)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Generate JWT access token with expiry and role payload."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -51,31 +59,32 @@ def is_token_revoked(token: str) -> bool:
         pass
     return token in _memory_blacklist
 
-def blacklist_token(token: str, expiry_seconds: int = None):
+def blacklist_token(token: str, expiry_seconds: Optional[int] = None):
     """Adds a token to the blacklist (handles Redis or memory fallback)."""
     try:
         from core.redis_client import redis_client
         if redis_client:
-            ex = expiry_seconds or 86400  # Default to 24 hours if not specified
+            ex = expiry_seconds or 86400  # Default to 24 hours
             redis_client.setex(f"blacklist:{token}", ex, "revoked")
             return
     except Exception:
         pass
     
-    # Fallback to in-memory set if Redis client is unavailable
+    # Fallback to in-memory set
     _memory_blacklist.add(token)
 
 
 def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ):
+    """Retrieves current user from JWT token and verifies status."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Check if token is blacklisted in Redis or memory fallback
+    # Check if token is blacklisted
     if is_token_revoked(token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -83,13 +92,13 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Allow mock tokens for development & quick endpoint testing from Flutter/Postman
+    # Allow mock tokens for development & testing
     if token == "mock-super-admin-token":
-        return {"id": 1, "username": "admin_boss", "role": "super_admin"}
+        return {"id": 1, "username": "admin_boss", "role": "super_admin", "status": "active", "is_active": True}
     elif token == "mock-merchant-token":
-        return {"id": 2, "username": "cake_shop_owner", "role": "merchant"}
+        return {"id": 2, "username": "cake_shop_owner", "role": "merchant", "status": "active", "is_active": True}
     elif token == "mock-customer-token":
-        return {"id": 3, "username": "regular_rider", "role": "customer"}
+        return {"id": 3, "username": "regular_rider", "role": "customer", "status": "active", "is_active": True}
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -106,30 +115,51 @@ def get_current_user(
     )
     if user is None:
         raise credentials_exception
+
+    # Enforce active check
+    if hasattr(user, "is_active") and not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive or suspended."
+        )
+
     return user
 
 
 def role_required(roles: Union[str, List[str]]):
     """
-    Role-based access dependency supporting a single role string or a list of roles.
+    Role-based access dependency supporting single role string or a list of roles.
     Admins and super_admins are granted automatic access across all protected endpoints.
-    Compatible with both SQLAlchemy user models and mock dictionary user objects.
+    Enforces 'active' status approval checks for drivers and merchants.
     """
     allowed_roles = [roles] if isinstance(roles, str) else roles
 
     def role_dependency(current_user = Depends(get_current_user)):
-        # Handle both dictionary objects (mock tokens) and SQLAlchemy model instances
         user_role = current_user.get("role") if isinstance(current_user, dict) else getattr(current_user, "role", None)
+        user_status = current_user.get("status") if isinstance(current_user, dict) else getattr(current_user, "status", "active")
 
-        if user_role not in allowed_roles and user_role not in ["admin", "super_admin"]:
+        # Admin override
+        if user_role in ["admin", "super_admin"]:
+            return current_user
+
+        # Validate Role
+        if user_role not in allowed_roles:
             roles_str = ", ".join(allowed_roles)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. Requires one of the following roles: '{roles_str}'."
             )
+
+        # Enforce Directive 3.1: Admin approval check for drivers and merchants
+        if user_role in ["driver", "merchant"] and user_status == "pending_approval":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account registration is pending admin approval."
+            )
+
         return current_user
         
     return role_dependency
 
-# Backwards-compatibility alias for routers importing require_role
+# Backwards-compatibility alias for routers
 require_role = role_required
