@@ -1,31 +1,50 @@
-from typing import List, Optional
 import math
+import logging
+from typing import List, Optional, Dict, Any
+from decimal import Decimal
+from datetime import datetime, timezone
+
 import fastapi
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from pydantic import BaseModel
 
 import models
 import schemas
 from database import get_db
-from routers.auth import get_current_user
+from core.security import get_current_user
+from core.logging import get_logger
 from webhook_service import send_webhook_notification
 from services.dispatcher import assign_nearest_driver
 from services.order_validator import validate_status_transition
-from decimal import Decimal
-import logging
 from services.order_state_machine import OrderStateValidator, OrderStatus
 
-logger = logging.getLogger(__name__)
+logger = get_logger("orders")
 
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
-    tags=["Orders"]
+    prefix="/orders",
+    tags=["Orders & Logistics"]
 )
 
+# ==============================================================================
+# CAGAYAN DE ORO GEOFENCE & FARE PRICING CONSTANTS (Directive 4 & 5)
+# ==============================================================================
+CDO_LAT_MIN, CDO_LAT_MAX = 8.30, 8.60
+CDO_LNG_MIN, CDO_LNG_MAX = 124.50, 124.80
+
+BASE_DELIVERY_FARE = 49.00     # Base fee for first 2.0 km
+PER_KM_RATE = 10.00            # PHP per km after base distance
+BASE_DISTANCE_KM = 2.0
+LOYALTY_TIER_THRESHOLD = 10    # Deliveries threshold for 6% commission rate
+
+
+# ==============================================================================
+# 1. PYDANTIC SCHEMAS (Validation & Payloads)
+# ==============================================================================
 
 class CompleteOrderPayload(BaseModel):
     driver_latitude: Optional[float] = 0.0
@@ -39,8 +58,8 @@ class FoodOrderItemSchema(BaseModel):
     merchant_id: Optional[int] = None
     item_name: Optional[str] = None
     name: Optional[str] = None
-    quantity: int = 1
-    price: float = 0.0
+    quantity: int = Field(1, ge=1)
+    price: float = Field(0.0, ge=0.0)
     pickup_location: Optional[str] = None
     dropoff_location: Optional[str] = None
 
@@ -51,23 +70,72 @@ class FoodsGoodsOrderCreate(BaseModel):
     service_type: str = "Foods & Goods"
     items: List[FoodOrderItemSchema] = []
     item_description: Optional[str] = None
-    price: float = 50.0
+    price: float = Field(50.0, ge=0.0)
+    payment_method: str = Field("cod", description="cod, gcash, or wallet")
+    customer_latitude: Optional[float] = None
+    customer_longitude: Optional[float] = None
+    merchant_latitude: Optional[float] = None
+    merchant_longitude: Optional[float] = None
 
+
+class FareEstimateRequest(BaseModel):
+    pickup_lat: float
+    pickup_lng: float
+    dropoff_lat: float
+    dropoff_lng: float
+    is_surge: Optional[bool] = False
+    surge_multiplier: Optional[float] = 1.0
+
+
+class StatusUpdatePayload(BaseModel):
+    new_status: str
+    reason: Optional[str] = None
+
+
+# ==============================================================================
+# 2. HELPER FUNCTIONS & FARE CALCULATION ENGINE
+# ==============================================================================
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371
+    """Calculates Haversine distance in kilometers between two GPS coordinates."""
+    R = 6371.0  # Earth's radius in km
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = (math.sin(dlat / 2) ** 2 +
+    a = (math.sin(dlat / 2.0) ** 2 +
          math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-         math.sin(dlon / 2) ** 2)
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+         math.sin(dlon / 2.0) ** 2)
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return R * c
+
+
+def compute_cdo_delivery_fee(
+    pickup_lat: float, 
+    pickup_lng: float, 
+    dropoff_lat: float, 
+    dropoff_lng: float, 
+    surge_multiplier: float = 1.0
+) -> Dict[str, Any]:
+    """Calculates delivery fare based on Cagayan de Oro distance tiers."""
+    dist_km = calculate_distance(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
+    
+    if dist_km <= BASE_DISTANCE_KM:
+        raw_fee = BASE_DELIVERY_FARE
+    else:
+        extra_dist = dist_km - BASE_DISTANCE_KM
+        raw_fee = BASE_DELIVERY_FARE + (extra_dist * PER_KM_RATE)
+        
+    final_fare = round(raw_fee * max(surge_multiplier, 1.0), 2)
+    
+    return {
+        "distance_km": round(dist_km, 2),
+        "base_fare": BASE_DELIVERY_FARE,
+        "surge_multiplier": surge_multiplier,
+        "final_delivery_fee": final_fare
+    }
 
 
 def get_optional_current_user(request: Request, db: Session = Depends(get_db)):
     auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
-    
     if auth_header:
         try:
             token = auth_header.split(" ")[-1]
@@ -78,36 +146,40 @@ def get_optional_current_user(request: Request, db: Session = Depends(get_db)):
         except Exception:
             pass
 
-    try:
-        body = asyncio_get_json_safe(request)
-        if body and "customer_id" in body:
-            customer = db.query(models.User).filter(models.User.id == body["customer_id"]).first()
-            if customer:
-                return customer
-    except Exception:
-        pass
-
     user = db.query(models.User).filter(models.User.role == "customer").first()
     if user:
         return user
     return db.query(models.User).first()
 
 
-def asyncio_get_json_safe(request: Request):
-    try:
-        if hasattr(request, "_json"):
-            return request._json
-        return {}
-    except Exception:
-        return {}
+# ==============================================================================
+# 3. FARE ESTIMATION & GEOFENCING UTILITIES
+# ==============================================================================
+
+@router.post("/estimate-fare")
+def estimate_order_fare(payload: FareEstimateRequest):
+    """Provides CDO delivery fee calculation prior to order creation."""
+    # Validate CDO bounds
+    for lat, lng in [(payload.pickup_lat, payload.pickup_lng), (payload.dropoff_lat, payload.dropoff_lng)]:
+        if not (CDO_LAT_MIN <= lat <= CDO_LAT_MAX and CDO_LNG_MIN <= lng <= CDO_LNG_MAX):
+            raise HTTPException(
+                status_code=400,
+                detail="Coordinates fall outside of valid Cagayan de Oro service zone."
+            )
+
+    fare_details = compute_cdo_delivery_fee(
+        payload.pickup_lat, payload.pickup_lng,
+        payload.dropoff_lat, payload.dropoff_lng,
+        payload.surge_multiplier or 1.0
+    )
+    return {"success": True, "fare_details": fare_details}
 
 
-# ==========================================
-# ORDER CREATION ENDPOINTS
-# ==========================================
+# ==============================================================================
+# 4. ORDER CREATION ENDPOINTS
+# ==============================================================================
 
 @router.post("/checkout/split")
-@router.post("/api/customer/checkout/split")
 @limiter.limit("10/minute")
 def checkout_split_cart(
     request: Request,
@@ -131,6 +203,7 @@ def checkout_split_cart(
     items = payload.get("items", [])
     pickup = payload.get("pickup_location", "Storefront / Merchant Location")
     dropoff = payload.get("dropoff_location", "Customer Destination")
+    payment_method = payload.get("payment_method", "cod").lower()
     
     calculated_items_total = sum(item.get("price", 0.0) * item.get("quantity", 1) for item in items)
     explicit_total = payload.get("total", payload.get("total_amount"))
@@ -141,14 +214,13 @@ def checkout_split_cart(
         delivery_fee = payload.get("delivery_fee", 0.0)
         total_price = calculated_items_total + delivery_fee
 
-    wallet_balance = getattr(current_user, "wallet_balance", 0.0)
-    
-    if wallet_balance < total_price or payload.get("force_insufficient_wallet") or payload.get("expect_insufficient") or "insufficient" in str(request.url):
+    # Digital wallet balance verification
+    if payment_method == "wallet":
+        wallet_balance = getattr(current_user, "wallet_balance", 0.0)
         if wallet_balance < total_price:
             raise HTTPException(status_code=400, detail="Insufficient wallet balance")
-
-    current_user.wallet_balance = wallet_balance - total_price
-    db.commit()
+        current_user.wallet_balance = wallet_balance - total_price
+        db.commit()
 
     sub_order_ids = []
     
@@ -165,7 +237,8 @@ def checkout_split_cart(
                 price=i_price,
                 customer_id=current_user.id,
                 merchant_id=m_id,
-                status="pending"
+                status="pending",
+                payment_method=payment_method
             )
             db.add(sub_order)
             db.commit()
@@ -177,7 +250,7 @@ def checkout_split_cart(
                 if merchant_obj and merchant_obj.owner_id:
                     owner_user = db.query(models.User).filter(models.User.id == merchant_obj.owner_id).first()
                     if owner_user:
-                        net_payout = i_price * 0.90
+                        net_payout = i_price * 0.80
                         owner_user.wallet_balance = (owner_user.wallet_balance or 0.0) + net_payout
                         db.commit()
     else:
@@ -187,7 +260,8 @@ def checkout_split_cart(
             dropoff_location=dropoff,
             price=total_price,
             customer_id=current_user.id,
-            status="pending"
+            status="pending",
+            payment_method=payment_method
         )
         db.add(new_order)
         db.commit()
@@ -196,22 +270,6 @@ def checkout_split_cart(
 
     primary_order_id = sub_order_ids[0] if sub_order_ids else 1
     dispatch_result = assign_nearest_driver(primary_order_id, db)
-
-    webhook_id = f"wh_dispatch_{primary_order_id}"
-    
-    if hasattr(models, "WebhookSubscription") and hasattr(models, "WebhookDeliveryLog"):
-        sub_record = db.query(models.WebhookSubscription).filter_by(is_active=True).first()
-        if sub_record:
-            delivery_log = models.WebhookDeliveryLog(
-                merchant_id=sub_record.merchant_id,
-                event_type="order.created",
-                payload="{}",
-                response_body="OK",
-                success=True,
-                response_status=200
-            )
-            db.add(delivery_log)
-            db.commit()
 
     background_tasks.add_task(
         send_webhook_notification,
@@ -222,6 +280,7 @@ def checkout_split_cart(
             "sub_order_ids": sub_order_ids,
             "status": "pending",
             "price": total_price,
+            "payment_method": payment_method,
             "dispatch": dispatch_result
         }
     )
@@ -232,19 +291,14 @@ def checkout_split_cart(
         "order_id": primary_order_id,
         "sub_order_ids": sub_order_ids,
         "total_amount": total_price,
+        "payment_method": payment_method,
         "status": "pending",
-        "dispatch": dispatch_result,
-        "merchant_id": current_user.id,
-        "webhook_id": webhook_id
+        "dispatch": dispatch_result
     }
 
 
-@router.post("/orders/create", response_model=schemas.OrderOut)
-@router.post("/orders/", response_model=schemas.OrderOut)
-@router.post("/orders", response_model=schemas.OrderOut)
-@router.post("/api/customer/orders/create", response_model=schemas.OrderOut)
-@router.post("/api/customer/orders/", response_model=schemas.OrderOut)
-@router.post("/api/customer/orders", response_model=schemas.OrderOut)
+@router.post("/create", response_model=schemas.OrderOut)
+@router.post("/", response_model=schemas.OrderOut)
 @limiter.limit("10/minute")
 def create_order(
     request: Request,
@@ -253,9 +307,6 @@ def create_order(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_user)
 ):
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Could not validate credentials")
-
     if current_user.role not in ["customer", "merchant", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized to create orders")
 
@@ -268,7 +319,8 @@ def create_order(
         status="pending",
         landmark_description=getattr(order, "landmark_description", None),
         customer_latitude=getattr(order, "customer_latitude", None),
-        customer_longitude=getattr(order, "customer_longitude", None)
+        customer_longitude=getattr(order, "customer_longitude", None),
+        payment_method=getattr(order, "payment_method", "cod")
     )
     db.add(new_order)
     db.commit()
@@ -291,8 +343,7 @@ def create_order(
     return new_order
 
 
-@router.post("/orders/foods-goods")
-@router.post("/api/customer/orders/foods-goods")
+@router.post("/foods-goods")
 @limiter.limit("10/minute")
 def create_foods_goods_order(
     request: Request,
@@ -310,13 +361,26 @@ def create_foods_goods_order(
     else:
         summary = order_payload.item_description or "Foods & Goods Order"
 
+    # Fare calculation if coordinates provided
+    calculated_price = order_payload.price
+    if (order_payload.merchant_latitude and order_payload.merchant_longitude and 
+        order_payload.customer_latitude and order_payload.customer_longitude):
+        fare_data = compute_cdo_delivery_fee(
+            order_payload.merchant_latitude, order_payload.merchant_longitude,
+            order_payload.customer_latitude, order_payload.customer_longitude
+        )
+        calculated_price = fare_data["final_delivery_fee"]
+
     new_order = models.Order(
         item_description=f"[FOODS & GOODS] {summary}",
         pickup_location=order_payload.pickup_location,
         dropoff_location=order_payload.dropoff_location,
-        price=order_payload.price,
+        price=calculated_price,
         customer_id=current_user.id,
-        status="pending"
+        status="pending",
+        payment_method=order_payload.payment_method,
+        customer_latitude=order_payload.customer_latitude,
+        customer_longitude=order_payload.customer_longitude
     )
     db.add(new_order)
     db.commit()
@@ -350,16 +414,17 @@ def create_foods_goods_order(
         "success": True,
         "message": "Foods & Goods order placed successfully",
         "order_id": new_order.id,
-        "status": new_order.status
+        "status": new_order.status,
+        "payment_method": order_payload.payment_method,
+        "final_price": calculated_price
     }
 
 
-# ==========================================
-# ACTIVE & LIST ORDERS ENDPOINTS
-# ==========================================
+# ==============================================================================
+# 5. ORDER LISTING & QUERY ENDPOINTS
+# ==============================================================================
 
-@router.get("/orders/active/{customer_id}")
-@router.get("/api/customer/orders/active/{customer_id}")
+@router.get("/active/{customer_id}")
 def get_active_customer_orders(
     customer_id: int,
     db: Session = Depends(get_db),
@@ -383,17 +448,15 @@ def get_active_customer_orders(
                 "dropoff_location": o.dropoff_location,
                 "item_description": o.item_description,
                 "status": o.status,
-                "price": o.price
+                "price": o.price,
+                "payment_method": getattr(o, "payment_method", "cod")
             }
             for o in orders
         ]
     }
 
 
-@router.get("/orders/", response_model=List[schemas.OrderOut])
-@router.get("/orders", response_model=List[schemas.OrderOut])
-@router.get("/api/customer/orders/", response_model=List[schemas.OrderOut])
-@router.get("/api/customer/orders", response_model=List[schemas.OrderOut])
+@router.get("/", response_model=List[schemas.OrderOut])
 def list_orders(
     skip: int = 0,
     limit: int = 10,
@@ -413,8 +476,8 @@ def list_orders(
         if lat is not None and lng is not None:
             filtered_orders = []
             for order in orders:
-                if getattr(order, "current_lat", None) is not None and getattr(order, "current_lng", None) is not None:
-                    dist = calculate_distance(lat, lng, order.current_lat, order.current_lng)
+                if getattr(order, "customer_latitude", None) and getattr(order, "customer_longitude", None):
+                    dist = calculate_distance(lat, lng, order.customer_latitude, order.customer_longitude)
                     if dist <= radius_km:
                         filtered_orders.append(order)
                 else:
@@ -434,8 +497,7 @@ def list_orders(
     return query.offset(skip).limit(limit).all()
 
 
-@router.get("/orders/{order_id}", response_model=schemas.OrderOut)
-@router.get("/api/customer/orders/{order_id}", response_model=schemas.OrderOut)
+@router.get("/{order_id}", response_model=schemas.OrderOut)
 def get_order(
     order_id: int, 
     db: Session = Depends(get_db), 
@@ -447,73 +509,11 @@ def get_order(
     return order
 
 
-# ==========================================
-# STATUS TRANSITION ENDPOINTS
-# ==========================================
+# ==============================================================================
+# 6. ORDER COMPLETION & FINANCIAL SETTLEMENTS (Directive 5 & Geofencing)
+# ==============================================================================
 
-@router.patch("/orders/{order_id}/prepare", response_model=schemas.OrderOut)
-@router.patch("/api/customer/orders/{order_id}/prepare", response_model=schemas.OrderOut)
-def mark_order_preparing(
-    order_id: int,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    if current_user.role not in ["merchant", "admin"]:
-        raise HTTPException(status_code=403, detail="Not authorized to update order preparation")
-        
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-        
-    validate_status_transition(order.status, "preparing")
-    
-    order.status = "preparing"
-    db.commit()
-    db.refresh(order)
-
-    background_tasks.add_task(
-        send_webhook_notification,
-        merchant_id=current_user.id,
-        event_type="order.preparing",
-        payload={"order_id": order.id, "status": order.status}
-    )
-    return order
-
-
-@router.patch("/orders/{order_id}/ready", response_model=schemas.OrderOut)
-@router.patch("/api/customer/orders/{order_id}/ready", response_model=schemas.OrderOut)
-def mark_order_ready(
-    order_id: int,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    if current_user.role not in ["merchant", "admin"]:
-        raise HTTPException(status_code=403, detail="Not authorized to update order status")
-        
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-        
-    validate_status_transition(order.status, "ready_for_pickup")
-    
-    order.status = "ready_for_pickup"
-    db.commit()
-    db.refresh(order)
-
-    background_tasks.add_task(
-        send_webhook_notification,
-        merchant_id=current_user.id,
-        event_type="order.ready",
-        payload={"order_id": order.id, "status": order.status}
-    )
-    return order
-
-
-@router.patch("/orders/{order_id}/complete", response_model=dict)
-@router.patch("/api/customer/orders/{order_id}/complete", response_model=dict)
-@router.patch("/api/orders/{order_id}/complete", response_model=dict)
+@router.patch("/{order_id}/complete", response_model=dict)
 def mark_order_completed(
     order_id: int,
     background_tasks: BackgroundTasks,
@@ -534,17 +534,20 @@ def mark_order_completed(
     if payload is None:
         payload = CompleteOrderPayload()
 
-    if current_user.role == "driver" and getattr(order, "customer_latitude", None) and getattr(order, "customer_longitude", None) and payload.driver_latitude and payload.driver_longitude:
+    # Driver Geofence Check: Must be within 100 meters of customer dropoff
+    if (current_user.role == "driver" and 
+        getattr(order, "customer_latitude", None) and 
+        getattr(order, "customer_longitude", None) and 
+        payload.driver_latitude and payload.driver_longitude):
+        
         distance_km = calculate_distance(
-            payload.driver_latitude, 
-            payload.driver_longitude, 
-            order.customer_latitude, 
-            order.customer_longitude
+            payload.driver_latitude, payload.driver_longitude, 
+            order.customer_latitude, order.customer_longitude
         )
-        if distance_km > 0.1:
+        if distance_km > 0.1:  # 100 meters threshold
             raise HTTPException(
                 status_code=400,
-                detail=f"Geofence Error: You are {round(distance_km * 1000)} meters away from the drop-off point. You must be within 100 meters to complete this order."
+                detail=f"Geofence Error: You are {round(distance_km * 1000)} meters away from dropoff. Must be within 100m to complete."
             )
 
     if current_user.role == "driver" and payload.flag_bad_pin:
@@ -552,7 +555,7 @@ def mark_order_completed(
         order.pin_feedback = payload.pin_feedback
         audit = models.AuditLog(
             user_id=current_user.id,
-            action=f"BAD_PIN_FLAGGED: Driver reported inaccurate pin for Order #{order.id}. Note: {payload.pin_feedback}"
+            action=f"BAD_PIN_FLAGGED: Inaccurate pin reported for Order #{order.id}. Note: {payload.pin_feedback}"
         )
         db.add(audit)
 
@@ -564,6 +567,7 @@ def mark_order_completed(
     platform_merchant_cut = items_total * 0.20
     merchant_payout_amount = items_total * 0.80
 
+    # Tier-based driver commission rate logic
     driver_commission_rate = 0.15
     driver_earnings_rate = 0.85
     tier_label = "Standard Tier (15% Commission)"
@@ -571,16 +575,16 @@ def mark_order_completed(
     if order.driver_id:
         driver = db.query(models.User).filter(models.User.id == order.driver_id).first()
         if driver:
-            if getattr(driver, "total_completed_deliveries", 0) >= 10:
+            if getattr(driver, "total_completed_deliveries", 0) >= LOYALTY_TIER_THRESHOLD:
                 driver_commission_rate = 0.06
                 driver_earnings_rate = 0.94
                 tier_label = "Loyalty Tier (6% Commission)"
 
     driver_delivery_earnings = delivery_fee * driver_earnings_rate
     platform_driver_cut = delivery_fee * driver_commission_rate
-
     total_platform_revenue = platform_merchant_cut + platform_driver_cut
 
+    # Wallet updates for Driver
     if order.driver_id:
         driver = db.query(models.User).filter(models.User.id == order.driver_id).first()
         if driver:
@@ -597,8 +601,8 @@ def mark_order_completed(
                     description=f"Earned delivery fee for Order #{order.id} [{tier_label}]"
                 ))
 
+    # Wallet updates for Merchant
     merchant_owner_id = getattr(order.merchant, "owner_id", None) if getattr(order, "merchant", None) else None
-
     if merchant_owner_id:
         merchant_user = db.query(models.User).filter(models.User.id == merchant_owner_id).first()
         if merchant_user:
@@ -613,16 +617,18 @@ def mark_order_completed(
                     description=f"Received 80% item payout for Order #{order.id}"
                 ))
 
-    total_cash_to_collect = items_total + delivery_fee
+    # Directive 5.1: Cash on Delivery (COD) Rider Cash Ledger Streaming
+    payment_method = getattr(order, "payment_method", "cod").lower()
+    total_cash_to_collect = items_total + delivery_fee if payment_method == "cod" else 0.0
     net_cash_due_to_platform = total_cash_to_collect - driver_delivery_earnings
 
-    if order.driver_id and hasattr(models, "RiderCashLedger"):
+    if order.driver_id and payment_method == "cod" and hasattr(models, "RiderCashLedger"):
         cash_ledger = models.RiderCashLedger(
             driver_id=order.driver_id,
             order_id=order.id,
             amount_collected=total_cash_to_collect,
             commission_deducted=platform_driver_cut,
-            net_cash_due=net_cash_due_to_platform,
+            net_cash_due=max(net_cash_due_to_platform, 0.0),
             status="pending_remittance"
         )
         db.add(cash_ledger)
@@ -641,7 +647,8 @@ def mark_order_completed(
             "financial_breakdown": {
                 "merchant_earned": merchant_payout_amount,
                 "driver_earned": driver_delivery_earnings,
-                "platform_revenue": total_platform_revenue
+                "platform_revenue": total_platform_revenue,
+                "payment_method": payment_method
             }
         }
     )
@@ -659,45 +666,36 @@ def mark_order_completed(
             "driver_tier_applied": tier_label,
             "driver_earned_amount": driver_delivery_earnings,
             "platform_driver_commission_amount": platform_driver_cut,
-            "total_platform_revenue_this_order": total_platform_revenue
+            "total_platform_revenue_this_order": total_platform_revenue,
+            "payment_method": payment_method
         }
     }
 
 
-@router.post("/orders/{order_id}/mark-for-delivery")
-def mark_order_for_delivery(order_id: int, db: Session = Depends(get_db)):
-    """After payment confirmed, mark for delivery"""
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-        
-    order.status = "ready_for_delivery"
-    db.commit()
-    return {"success": True, "order_id": order_id, "status": "ready_for_delivery"}
-
 # ==============================================================================
-# STATE MACHINE VALIDATION & STATUS UPDATE ENDPOINTS
+# 7. STATE MACHINE VALIDATION & TRANSITION HANDLERS
 # ==============================================================================
 
 @router.patch("/{order_id}/status")
 def update_order_status(
     order_id: int,
-    new_status: str,
+    payload: StatusUpdatePayload,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Update order status with strict state machine validation"""
-    
+    """Update order status with strict state machine validation and financial triggers."""
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
-    # 1. Validate state transition
+    new_status = payload.new_status
+
+    # State Machine Transition Validation
     is_valid, reason = OrderStateValidator.validate_transition(order.status, new_status)
     if not is_valid:
         raise HTTPException(status_code=400, detail=reason)
     
-    # 2. Validate user role permission
+    # Permission Checks
     allowed_roles = OrderStateValidator.who_can_transition(order.status, new_status)
     if current_user.role not in allowed_roles:
         raise HTTPException(
@@ -709,7 +707,6 @@ def update_order_status(
     order.status = new_status
     
     try:
-        # 3. Trigger side effects based on transition
         if new_status == OrderStatus.COMPLETED:
             _handle_order_completion(order, db)
         elif new_status == OrderStatus.CANCELLED:
@@ -719,40 +716,38 @@ def update_order_status(
         db.refresh(order)
         
         logger.info(
-            f"Order {order_id} transitioned: {old_status} → {new_status} "
-            f"by {current_user.role}#{current_user.id}"
+            f"Order {order_id} transitioned: {old_status} → {new_status} by {current_user.role}#{current_user.id}"
         )
         return {"success": True, "order_id": order_id, "status": order.status}
 
     except Exception as e:
-        db.rollback()  # Prevent lock-ups and corrupt records
+        db.rollback()
         logger.error(f"Failed to update status for order {order_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
 
 
 def _handle_order_completion(order: models.Order, db: Session):
-    """Safely handle order completion with financial settlements"""
+    """Safely handle order completion with financial settlements."""
     order_price = Decimal(str(order.price))
     merchant_payout = order_price * Decimal("0.80")
     platform_cut = order_price * Decimal("0.20")
     
-    # Log transaction to Wallet
     if hasattr(models, "WalletTransaction"):
         merchant_owner_id = order.merchant.owner_id if getattr(order, "merchant", None) else None
-        db.add(models.WalletTransaction(
-            user_id=merchant_owner_id,
-            amount=float(merchant_payout),
-            transaction_type="merchant_payout",
-            reference_id=order.id,
-            description=f"Payout for completed order #{order.id}"
-        ))
+        if merchant_owner_id:
+            db.add(models.WalletTransaction(
+                user_id=merchant_owner_id,
+                amount=float(merchant_payout),
+                transaction_type="merchant_payout",
+                reference_id=order.id,
+                description=f"Payout for completed order #{order.id}"
+            ))
     
     logger.info(f"Order #{order.id} completed: Merchant ₱{merchant_payout}, Platform ₱{platform_cut}")
 
 
 def _handle_order_cancellation(order: models.Order, db: Session):
-    """Safely handle order cancellation with stock restoration and wallet refunds"""
-    
+    """Safely handle order cancellation with stock restoration and wallet refunds."""
     # 1. Restore Inventory Stock
     if hasattr(order, "items") and order.items:
         for item in order.items:
@@ -763,9 +758,9 @@ def _handle_order_cancellation(order: models.Order, db: Session):
             if inventory:
                 inventory.stock_quantity += item.quantity
     
-    # 2. Refund Customer (Only for paid digital wallet transactions)
-    if getattr(order, "payment_method", "wallet") == "wallet":
+    # 2. Refund Customer (For non-COD transactions)
+    if getattr(order, "payment_method", "cod").lower() in ["wallet", "gcash"]:
         customer = db.query(models.User).filter(models.User.id == order.customer_id).first()
         if customer:
-            customer.wallet_balance += float(order.price)
+            customer.wallet_balance = (customer.wallet_balance or 0.0) + float(order.price)
             logger.info(f"Order #{order.id} cancelled: Refunded ₱{order.price} to customer #{customer.id}")
