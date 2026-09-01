@@ -2,12 +2,7 @@ import os
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Boolean, DateTime
 from sqlalchemy.orm import sessionmaker, Query, declarative_base
-from passlib.context import CryptContext
 
-# Password hashing context for ajentq seeding
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Base
 Base = declarative_base()
 
 def get_database_url():
@@ -105,33 +100,5 @@ def get_db():
     finally:
         db.close()
 
-# Register all models so SQLAlchemy knows about them
-import models
-
-# Automatically seed/create the 'ajentq' account into the database if missing
-def seed_ajentq_account():
-    db = SessionLocal()
-    try:
-        existing_user = db.query(models.User).filter(models.User.username == "ajentq").first()
-        if not existing_user:
-            hashed_pw = pwd_context.hash("101391@Jent")
-            ajentq_user = models.User(
-                username="ajentq",
-                hashed_password=hashed_pw,
-                role="driver",
-                status="online"
-            )
-            db.add(ajentq_user)
-            db.commit()
-            print("Successfully created 'ajentq' account in the database!")
-        else:
-            print("'ajentq' account already exists in database.")
-    except Exception as e:
-        db.rollback()
-        print(f"Error seeding ajentq account: {e}")
-    finally:
-        db.close()
-
-# Run table creation and automatic seeding on startup
+# Run table creation on startup
 Base.metadata.create_all(bind=engine)
-seed_ajentq_account()

@@ -1,4 +1,3 @@
-import models
 from database import SessionLocal
 from passlib.context import CryptContext
 from datetime import datetime
@@ -6,6 +5,7 @@ from datetime import datetime
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def seed_database():
+    import models  # Gibutang dinhi sa sulod aron masigurong nahuman na og load ang database ug walay circular import
     db = SessionLocal()
     try:
         # 1. Check if admin/ajentq account already exists
@@ -15,7 +15,7 @@ def seed_database():
             admin_user = models.User(
                 username="ajentq",
                 hashed_password=hashed_pw,
-                role="admin",  # o unsa man ang saktong role
+                role="admin",
                 wallet_balance=5000.0,
                 status="online"
             )
