@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from geoalchemy2 import Geometry
 from database import Base, SoftDeleteMixin
+from enum import Enum
 
 
 class User(Base, SoftDeleteMixin):
@@ -168,17 +169,41 @@ class Order(Base, SoftDeleteMixin):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    master_order_id = Column(Integer, ForeignKey("master_orders.id"), nullable=True, index=True)
+    master_order_id = Column(
+        Integer, 
+        ForeignKey("master_orders.id", ondelete="CASCADE"), 
+        nullable=True, 
+        index=True
+    )
     item_description = Column(String, index=True)
     pickup_location = Column(String)
     dropoff_location = Column(String)
     price = Column(Float, default=50.0)
     status = Column(String, default="pending", index=True)
     
-    customer_id = Column(Integer, ForeignKey("users.id"), index=True)
-    driver_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    merchant_id = Column(Integer, ForeignKey("merchants.id"), nullable=True, index=True)
-    branch_id = Column(Integer, ForeignKey("merchant_branches.id"), nullable=True, index=True)  # Multi-branch linkage
+    customer_id = Column(
+        Integer, 
+        ForeignKey("users.id", ondelete="RESTRICT"), 
+        index=True
+    )
+    driver_id = Column(
+        Integer, 
+        ForeignKey("users.id", ondelete="SET NULL"), 
+        nullable=True, 
+        index=True
+    )
+    merchant_id = Column(
+        Integer, 
+        ForeignKey("merchants.id", ondelete="RESTRICT"), 
+        nullable=True, 
+        index=True
+    )
+    branch_id = Column(
+        Integer, 
+        ForeignKey("merchant_branches.id", ondelete="CASCADE"), 
+        nullable=True, 
+        index=True
+    )
     
     current_lat = Column(Float, nullable=True)
     current_lng = Column(Float, nullable=True)
@@ -191,12 +216,30 @@ class Order(Base, SoftDeleteMixin):
     pin_feedback = Column(String, nullable=True)
 
     # Relationships
-    master_order = relationship("MasterOrder", back_populates="sub_orders")
+    master_order = relationship(
+        "MasterOrder", 
+        back_populates="sub_orders", 
+        foreign_keys=[master_order_id]
+    )
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
-    customer = relationship("User", foreign_keys=[customer_id], back_populates="orders_as_customer")
-    driver = relationship("User", foreign_keys=[driver_id], back_populates="orders_as_driver")
-    merchant = relationship("Merchant", back_populates="orders")
-    branch = relationship("MerchantBranch", back_populates="orders")
+    customer = relationship(
+        "User", 
+        foreign_keys=[customer_id], 
+        back_populates="orders_as_customer"
+    )
+    driver = relationship(
+        "User", 
+        foreign_keys=[driver_id], 
+        back_populates="orders_as_driver"
+    )
+    merchant = relationship(
+        "Merchant", 
+        back_populates="orders"
+    )
+    branch = relationship(
+        "MerchantBranch", 
+        back_populates="orders"
+    )
     reviews = relationship("Review", back_populates="order", cascade="all, delete-orphan")
 
 
@@ -211,6 +254,64 @@ class OrderItem(Base, SoftDeleteMixin):
 
     # Relationships
     order = relationship("Order", back_populates="items")
+
+
+# --- New Payment & Commission Models ---
+
+class PaymentMethod(str, Enum):
+    CASH_ON_DELIVERY = "cash_on_delivery"
+    BANK_TRANSFER = "bank_transfer"
+    WALLET = "wallet"
+
+
+class PaymentStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
+class Payment(Base, SoftDeleteMixin):
+    __tablename__ = "payments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    master_order_id = Column(Integer, ForeignKey("master_orders.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    payment_method = Column(String, default=PaymentMethod.WALLET)
+    status = Column(String, default=PaymentStatus.PENDING)
+    transaction_reference = Column(String, unique=True, nullable=True)
+    notes = Column(String, nullable=True)
+    payment_date = Column(DateTime, nullable=True)
+
+
+class MerchantCommission(Base, SoftDeleteMixin):
+    __tablename__ = "merchant_commission"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    merchant_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    gross_amount = Column(Float)
+    commission_rate = Column(Float, default=0.10)  # 10% platform fee
+    commission_amount = Column(Float)
+    merchant_payout = Column(Float)
+    status = Column(String, default="pending")  # pending, processed, paid_out
+    payout_date = Column(DateTime, nullable=True)
+
+
+class BankTransferRequest(Base, SoftDeleteMixin):
+    __tablename__ = "bank_transfer_requests"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    order_id = Column(Integer, ForeignKey("orders.id"))
+    bank_name = Column(String)
+    account_name = Column(String)
+    account_number = Column(String)
+    amount = Column(Float)
+    reference_number = Column(String, unique=True)  # e.g., HG-20240901-12345
+    status = Column(String, default="awaiting_payment")  # awaiting_payment, payment_confirmed, expired
+    payment_deadline = Column(DateTime)
 
 
 class AuditLog(Base):
@@ -246,6 +347,22 @@ class WebhookDeliveryLog(Base):
     response_body = Column(Text, nullable=True)
     success = Column(Boolean, default=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class WebhookEventQueue(Base):
+    """Reliable webhook delivery queue - persists events for retry"""
+    __tablename__ = "webhook_event_queue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    merchant_id = Column(Integer, ForeignKey("users.id"), index=True)
+    event_type = Column(String, nullable=False)
+    payload = Column(Text, nullable=False)
+    status = Column(String, default="pending", index=True)  # pending, delivered, failed
+    attempt_count = Column(Integer, default=0)
+    next_retry_at = Column(DateTime, nullable=True)
+    last_error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    delivered_at = Column(DateTime, nullable=True)
 
 
 class DriverShift(Base, SoftDeleteMixin):

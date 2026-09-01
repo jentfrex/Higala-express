@@ -1,7 +1,9 @@
+# database.py - Production Ready with Safe Soft Deletes & SQLAlchemy 2.0 Support
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Boolean, DateTime
-from sqlalchemy.orm import sessionmaker, Query, declarative_base
+from sqlalchemy import create_engine, Column, Boolean, DateTime, select
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from sqlalchemy.ext.hybrid import hybrid_property
 
 Base = declarative_base()
 
@@ -39,36 +41,11 @@ print("=" * 60)
 
 
 # -------------------------------
-# Soft Delete Query
-# -------------------------------
-class SoftDeleteQuery(Query):
-    def __new__(cls, *args, **kwargs):
-        obj = super().__new__(cls)
-        if len(args) > 0:
-            super(SoftDeleteQuery, obj).__init__(*args, **kwargs)
-            return obj.filter(cls._get_model_class().is_deleted == False)
-        return obj
-
-    @classmethod
-    def _get_model_class(cls):
-        return getattr(cls, "_model_class", None)
-
-    def __init__(self, entities, session=None, **kwargs):
-        if entities:
-            self._model_class = (
-                entities[0] if hasattr(entities[0], "is_deleted") else None
-            )
-        super().__init__(entities, session, **kwargs)
-
-        if self._model_class and hasattr(self._model_class, "is_deleted"):
-            self.session = session
-
-
-# -------------------------------
-# Soft Delete Mixin
+# Soft Delete Mixin (SQLAlchemy 2.0 Compatible)
 # -------------------------------
 class SoftDeleteMixin:
-    is_deleted = Column(Boolean, default=False, nullable=False)
+    """Better soft-delete pattern using hybrid properties and safe ORM attributes"""
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
 
     created_at = Column(
@@ -84,10 +61,27 @@ class SoftDeleteMixin:
         nullable=False
     )
 
-    def soft_delete(self, db_session):
+    @hybrid_property
+    def is_active(self):
+        """Check if record is active (not soft-deleted)"""
+        return not self.is_deleted
+
+    def soft_delete(self, db_session: Session):
+        """Safely soft-delete a record"""
         self.is_deleted = True
         self.deleted_at = datetime.utcnow()
         db_session.commit()
+
+
+# -------------------------------
+# Safe Query Helper (Prevents SQL Injection & Fragile Custom Queries)
+# -------------------------------
+def get_active_query(db: Session, model_class):
+    """
+    Returns a query that only includes non-deleted records safely 
+    using standard SQLAlchemy 2.0 filtering methods.
+    """
+    return db.query(model_class).filter(model_class.is_deleted == False)
 
 
 # -------------------------------

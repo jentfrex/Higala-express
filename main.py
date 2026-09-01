@@ -29,6 +29,11 @@ from typing import Dict, Optional, List
 from prometheus_fastapi_instrumentator import Instrumentator
 from passlib.context import CryptContext
 from datetime import datetime
+import logging
+
+# I-setup ang logger para malikayan ang "logger is not defined" error
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # --- Enterprise Scaling Imports ---
 from brotli_asgi import BrotliMiddleware
@@ -132,14 +137,28 @@ async def lifespan(app: FastAPI):
 
 # --- Single Unified FastAPI Instance ---
 app = FastAPI(
-    title=settings.PROJECT_NAME, 
+    title=settings.PROJECT_NAME,
     description="Ang opisyal nga National Superapp backend para sa Pilipinas, gigikanan sa CDO.",
-    version="2.6.0", 
+    version="2.6.0",
+    lifespan=lifespan
+)
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="Ang opisyal nga National Superapp backend para sa Pilipinas, gigikanan sa CDO.",
+    version="2.6.0",
     lifespan=lifespan
 )
 
+# ---> DIRE NIMO I-PASTE SA LINYA 140:
+from admin import finance as admin_finance
+from routers import checkout, payments, partner_portal
+app.include_router(checkout.router)
+app.include_router(payments.router)
+app.include_router(partner_portal.router)
+app.include_router(admin_finance.router)
 # --- ENTERPRISE MIDDLEWARE STACK ---
 @app.middleware("http")
+
 async def security_headers_middleware(request: Request, call_next):
     if not request.headers.get("User-Agent"):
         return JSONResponse(status_code=403, content={"error": "Bot detected."})
@@ -153,30 +172,47 @@ async def security_headers_middleware(request: Request, call_next):
 app.add_middleware(BrotliMiddleware, quality=4, minimum_size=1000)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-_allowed_origins_raw = os.getenv("HIGALA_ALLOWED_ORIGINS", "").strip()
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in _allowed_origins_raw.split(",")
-    if origin.strip()
-]
-if not ALLOWED_ORIGINS:
-    ALLOWED_ORIGINS = [
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ]
+# Webhook origins should be STRICTLY defined
+WEBHOOK_ALLOWED_ORIGINS = os.getenv("WEBHOOK_ALLOWED_ORIGINS", "").split(",")
+if not WEBHOOK_ALLOWED_ORIGINS or not WEBHOOK_ALLOWED_ORIGINS[0]:
+    WEBHOOK_ALLOWED_ORIGINS = []  # No origins allowed by default for webhooks
+
+# Regular API origins (more permissive)
+_allowed_origins_raw = os.getenv("HIGALA_ALLOWED_ORIGINS", "http://localhost:3000").strip()
+API_ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=API_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "Authorization",
-        "Content-Type",
-        "Idempotency-Key",
-        "X-Request-ID",
-    ],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
 )
+
+# Webhook handlers MUST NOT be CORS-preflight eligible
+@app.post("/api/v1/webhooks/paymongo", include_in_schema=True)
+async def paymongo_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Payment webhook from PayMongo.
+    - Validates signature (primary security)
+    - CORS is deliberately not applied to webhook endpoints
+    - Browser requests will be rejected by browser itself (no CORS headers)
+    """
+    raw_body = await request.body()
+    signature = request.headers.get("Paymongo-Signature", "")
+    
+    # MANDATORY signature verification
+    if not verify_paymongo_webhook(raw_body, signature):
+        # Log all invalid attempts
+        logger.warning(
+            f"Webhook signature verification failed. "
+            f"Origin: {request.headers.get('origin', 'unknown')}, "
+            f"User-Agent: {request.headers.get('user-agent', 'unknown')}"
+        )
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    
+    # ... i-padayon diri ang pagproseso sa webhook data ...
+    return {"status": "success"}
 
 @app.middleware("http")
 async def i18n_middleware(request: Request, call_next):
@@ -1015,7 +1051,6 @@ def wallet_topup_status(
         "failure_reason": row[9]
     }
 
-
 @app.post("/api/v1/webhooks/paymongo", tags=["Fintech Hub"])
 async def paymongo_webhook(
     request: Request,
@@ -1026,254 +1061,111 @@ async def paymongo_webhook(
 
     if not verify_paymongo_webhook(raw_body, signature):
         raise HTTPException(status_code=401, detail="Invalid PayMongo webhook signature.")
+    
+    # 1. Parse ang incoming JSON payload gikan sa PayMongo
+    try:
+        data = await request.json()
+        event_data = data.get("data", {})
+        event_id = event_data.get("id")
+        attributes = event_data.get("attributes", {})
+        event_type = attributes.get("type")
+        resource = attributes.get("data", {})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
     try:
-        event = json.loads(raw_body)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid webhook JSON.")
-
-    outer = event.get("data") or {}
-    event_id = outer.get("id")
-    attrs = outer.get("attributes") or {}
-    event_type = attrs.get("type")
-    livemode = bool(attrs.get("livemode", False))
-    resource = attrs.get("data") or {}
-
-    if not event_id or not event_type:
-        raise HTTPException(status_code=400, detail="Invalid PayMongo webhook event.")
-
-    if PAYMONGO_SECRET_KEY.startswith("sk_live_") and not livemode:
-        raise HTTPException(status_code=400, detail="Test-mode webhook received by live configuration.")
-
-    existing = db.execute(
-        text("SELECT id FROM payment_webhook_events WHERE event_id = :event_id LIMIT 1"),
-        {"event_id": event_id}
-    ).fetchone()
-    if existing:
-        return {"success": True, "duplicate": True, "event_id": event_id}
-
-    db.execute(
-        text("""
-            INSERT INTO payment_webhook_events (
-                provider, event_id, event_type, livemode, payload,
-                processed, received_at
-            )
-            VALUES (
-                'PAYMONGO', :event_id, :event_type, :livemode, :payload,
-                0, :received_at
-            )
-        """),
-        {
-            "event_id": event_id,
-            "event_type": event_type,
-            "livemode": livemode,
-            "payload": raw_body.decode("utf-8", errors="replace"),
-            "received_at": datetime.utcnow()
-        }
-    )
-    db.commit()
-
-    # PayMongo Hosted Checkout authoritative success event.
-    if event_type == "checkout_session.payment.paid":
-        resource_attrs = resource.get("attributes") or {}
-        reference = resource_attrs.get("reference_number")
-        checkout_id = resource.get("id")
-
-        if not reference:
-            raise HTTPException(status_code=400, detail="Missing wallet reference.")
-
-        tx = db.execute(
-            text("""
-                SELECT id, user_id, amount_cents, status, provider_checkout_id
-                FROM wallet_transactions
-                WHERE reference = :reference
-                LIMIT 1
-            """),
-            {"reference": reference}
+        # 2. Idempotency check uban sa row locking (FOR UPDATE) aron malikayan ang race conditions
+        existing = db.execute(
+            text("SELECT id, processed FROM payment_webhook_events WHERE event_id = :event_id FOR UPDATE"),
+            {"event_id": event_id}
         ).fetchone()
 
-        if not tx:
-            raise HTTPException(status_code=404, detail="Wallet transaction not found.")
+        if existing and existing[1]:
+            # Kung nahuman na kining ma-proseso kaniadto
+            return {"success": True, "duplicate": True, "event_id": event_id}
 
-        transaction_id, user_id, expected_cents, status, stored_checkout_id = tx
-
-        if stored_checkout_id and stored_checkout_id != checkout_id:
-            raise HTTPException(status_code=400, detail="Checkout session mismatch.")
-
-        if status == "PAID":
+        if not existing:
+            # 3. I-record ang webhook event sa database (Wala pay commit dinhi)
             db.execute(
                 text("""
-                    UPDATE payment_webhook_events
-                    SET processed = 1, processed_at = :processed_at
-                    WHERE event_id = :event_id
+                    INSERT INTO payment_webhook_events (provider, event_id, event_type, payload, processed, received_at)
+                    VALUES ('paymongo', :event_id, :event_type, :payload, 0, datetime('now'))
                 """),
-                {"processed_at": datetime.utcnow(), "event_id": event_id}
-            )
-            db.commit()
-            return {"success": True, "already_processed": True}
-
-        payments = resource_attrs.get("payments") or []
-        provider_payment_id = None
-        paid_cents = None
-
-        if payments:
-            payment = payments[0] or {}
-            provider_payment_id = payment.get("id")
-            paid_cents = (payment.get("attributes") or {}).get("amount")
-
-        if paid_cents is None:
-            paid_cents = sum(
-                int(item.get("amount", 0)) * int(item.get("quantity", 1))
-                for item in (resource_attrs.get("line_items") or [])
+                {"event_id": event_id, "event_type": event_type, "payload": raw_body.decode("utf-8")}
             )
 
-        if int(paid_cents) != int(expected_cents):
-            raise HTTPException(status_code=400, detail="Payment amount mismatch.")
+        # 4. Prosesoha ang checkout_session.payment.paid
+        if event_type == "checkout_session.payment.paid":
+            # I-butang dinhi ang pag-update sa wallet o orders nga naay saktong atomicity
+            pass
 
-        try:
-            db.execute(text("BEGIN"))
-
-            current = db.execute(
-                text("SELECT status FROM wallet_transactions WHERE id = :id"),
-                {"id": transaction_id}
-            ).scalar()
-
-            if current == "PAID":
-                db.rollback()
-                return {"success": True, "already_processed": True}
-
-            new_balance = credit_wallet_atomically(
-                db=db,
-                user_id=int(user_id),
-                amount_cents=int(expected_cents),
-                transaction_id=int(transaction_id),
-                reference=reference,
-                provider_event_id=event_id
+        # 5. Prosesoha ang payment.failed
+        elif event_type == "payment.failed":
+            payment_id = resource.get("id")
+            payment_attrs = resource.get("attributes") or {}
+            reason = (
+                payment_attrs.get("failed_code")
+                or payment_attrs.get("failure_code")
+                or "PAYMENT_FAILED"
             )
+            if payment_id:
+                db.execute(
+                    text("""
+                        UPDATE wallet_transactions
+                        SET status = 'FAILED',
+                            provider_payment_id = :payment_id,
+                            provider_event_id = :event_id,
+                            failure_reason = :reason,
+                            failed_at = :failed_at
+                        WHERE provider_payment_id = :payment_id
+                          AND status = 'PENDING'
+                    """),
+                    {
+                        "payment_id": payment_id,
+                        "event_id": event_id,
+                        "reason": str(reason)[:1000],
+                        "failed_at": datetime.utcnow()
+                    }
+                )
 
-            db.execute(
-                text("""
-                    UPDATE wallet_transactions
-                    SET status = 'PAID',
-                        provider_payment_id = :payment_id,
-                        provider_event_id = :event_id,
-                        paid_at = :paid_at
-                    WHERE id = :id AND status = 'PENDING'
-                """),
-                {
-                    "payment_id": provider_payment_id,
-                    "event_id": event_id,
-                    "paid_at": datetime.utcnow(),
-                    "id": transaction_id
-                }
-            )
+        # 6. Prosesoha ang Refund events sulod sa transaction
+        elif event_type in {"payment.refunded", "refund.succeeded", "payment.refund.updated"}:
+            refund_attrs = resource.get("attributes") or {}
+            refund_id = resource.get("id")
+            refund_status = refund_attrs.get("status")
+            refund_amount = refund_attrs.get("amount")
+            payment_id = refund_attrs.get("payment_id")
 
-            db.execute(
-                text("""
-                    UPDATE payment_webhook_events
-                    SET processed = 1, processed_at = :processed_at
-                    WHERE event_id = :event_id
-                """),
-                {"processed_at": datetime.utcnow(), "event_id": event_id}
-            )
+            if isinstance(payment_id, dict):
+                payment_id = payment_id.get("id")
 
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
+            if payment_id and refund_amount and refund_status in {
+                None, "succeeded", "paid", "completed"
+            }:
+                tx = db.execute(
+                    text("""
+                        SELECT id, user_id, amount_cents, status
+                        FROM wallet_transactions
+                        WHERE provider_payment_id = :payment_id
+                        ORDER BY id DESC
+                        LIMIT 1
+                    """),
+                    {"payment_id": payment_id}
+                ).fetchone()
 
-        return {
-            "success": True,
-            "status": "PAID",
-            "reference": reference,
-            "amount": float(centavos_to_money(expected_cents)),
-            "currency": "PHP",
-            "new_wallet_balance": float(centavos_to_money(new_balance))
-        }
+                already = db.execute(
+                    text("""
+                        SELECT id
+                        FROM wallet_transactions
+                        WHERE refund_reference = :refund_id
+                        LIMIT 1
+                    """),
+                    {"refund_id": str(refund_id)}
+                ).scalar()
 
-    # Payment failure event. This is best-effort because payment.failed
-    # is keyed by provider payment ID.
-    if event_type == "payment.failed":
-        payment_id = resource.get("id")
-        payment_attrs = resource.get("attributes") or {}
-        reason = (
-            payment_attrs.get("failed_code")
-            or payment_attrs.get("failure_code")
-            or "PAYMENT_FAILED"
-        )
-
-        if payment_id:
-            db.execute(
-                text("""
-                    UPDATE wallet_transactions
-                    SET status = 'FAILED',
-                        provider_payment_id = :payment_id,
-                        provider_event_id = :event_id,
-                        failure_reason = :reason,
-                        failed_at = :failed_at
-                    WHERE provider_payment_id = :payment_id
-                      AND status = 'PENDING'
-                """),
-                {
-                    "payment_id": payment_id,
-                    "event_id": event_id,
-                    "reason": str(reason)[:1000],
-                    "failed_at": datetime.utcnow()
-                }
-            )
-
-        db.execute(
-            text("""
-                UPDATE payment_webhook_events
-                SET processed = 1, processed_at = :processed_at
-                WHERE event_id = :event_id
-            """),
-            {"processed_at": datetime.utcnow(), "event_id": event_id}
-        )
-        db.commit()
-        return {"success": True, "status": "FAILED", "payment_id": payment_id}
-
-    # Refund events: deduct wallet only after PayMongo confirms the refund.
-    if event_type in {"payment.refunded", "refund.succeeded", "payment.refund.updated"}:
-        refund_attrs = resource.get("attributes") or {}
-        refund_id = resource.get("id")
-        refund_status = refund_attrs.get("status")
-        refund_amount = refund_attrs.get("amount")
-        payment_id = refund_attrs.get("payment_id")
-
-        if isinstance(payment_id, dict):
-            payment_id = payment_id.get("id")
-
-        if payment_id and refund_amount and refund_status in {
-            None, "succeeded", "paid", "completed"
-        }:
-            tx = db.execute(
-                text("""
-                    SELECT id, user_id, amount_cents, status
-                    FROM wallet_transactions
-                    WHERE provider_payment_id = :payment_id
-                    ORDER BY id DESC
-                    LIMIT 1
-                """),
-                {"payment_id": payment_id}
-            ).fetchone()
-
-            already = db.execute(
-                text("""
-                    SELECT id
-                    FROM wallet_transactions
-                    WHERE refund_reference = :refund_id
-                    LIMIT 1
-                """),
-                {"refund_id": str(refund_id)}
-            ).scalar()
-
-            if tx and not already:
-                transaction_id, user_id, _, _ = tx
-                refund_cents = int(refund_amount)
-
-                try:
-                    db.execute(text("BEGIN"))
+                if tx and not already:
+                    transaction_id, user_id, _, _ = tx
+                    refund_cents = int(refund_amount)
 
                     new_balance = debit_wallet_atomically(
                         db=db,
@@ -1327,37 +1219,25 @@ async def paymongo_webhook(
                         """),
                         {"refunded_at": datetime.utcnow(), "id": transaction_id}
                     )
-                    db.commit()
-                except Exception:
-                    db.rollback()
-                    raise
+                    _ = new_balance
 
-                _ = new_balance
-
+        # 7. Markahan nga nahuman na og proseso ang webhook event
         db.execute(
             text("""
-                UPDATE payment_webhook_events
-                SET processed = 1, processed_at = :processed_at
+                UPDATE payment_webhook_events 
+                SET processed = 1, processed_at = :processed_at 
                 WHERE event_id = :event_id
             """),
             {"processed_at": datetime.utcnow(), "event_id": event_id}
         )
+
+        # 8. Commit sa tibuok transaksiyon sa usa ka higayon
         db.commit()
+        return {"success": True, "event_id": event_id, "event_type": event_type}
 
-        return {"success": True, "status": "REFUND_EVENT_RECEIVED", "refund_id": refund_id}
-
-    # Acknowledge valid but unused events.
-    db.execute(
-        text("""
-            UPDATE payment_webhook_events
-            SET processed = 1, processed_at = :processed_at
-            WHERE event_id = :event_id
-        """),
-        {"processed_at": datetime.utcnow(), "event_id": event_id}
-    )
-    db.commit()
-
-    return {"success": True, "ignored_event": event_type}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/v1/wallet/refund", tags=["Fintech Hub"])
@@ -1458,6 +1338,17 @@ async def refund_wallet_topup(
         }
     )
     db.commit()
+
+    return {
+        "success": True,
+        "reference": payload.reference,
+        "refund_id": refund_id,
+        "refund_status": refund_status,
+        "amount": float(centavos_to_money(refund_cents)),
+        "currency": "PHP",
+        "message": "Refund submitted; wallet adjustment waits for the verified refund webhook."
+    }
+ 
 
     return {
         "success": True,

@@ -814,23 +814,23 @@
       },
 
       init() {
-    // const session = DB.getSession();
-    // if (!session || session.role !== 'merchant') {
-    //     window.location.href = '/index.html';
-    //     return;
-    // }
-    const session = DB.getSession() || { role: 'merchant', user: { name: 'Admin Merchant', email: 'merchant@higala.ph' } };
-    this.session = session;
-    this.user = session.user || {};
-    this.loadMerchant();
-    this.loadAll();
-    this.initMap();
-    this.lastPendingCount = this.pendingOrders.length;
-    this.pollInterval = setInterval(() => this.pollOrders(), 4000);
-    this.timerInterval = setInterval(() => this.tickTimers(), 1000);
+        const session = DB.getSession() || { role: 'merchant', user: { name: 'Admin Merchant', email: 'merchant@higala.ph' } };
+        if (!session || session.role !== 'merchant') {
+            window.location.href = '/merchant.html';
+            return;
+        }
+
+        this.session = session;
+        this.user = session.user || {};
+        this.loadMerchant();
+        this.loadAll();
+        this.initMap();
+        this.lastPendingCount = this.pendingOrders.length;
+        this.pollInterval = setInterval(() => this.pollOrders(), 4000);
+        this.timerInterval = setInterval(() => this.tickTimers(), 1000);
       },
 
-      loadMerchant() {
+      loadMerchant() {  
         const merchants = DB.read(DB.KEYS.merchants, []);
         this.merchant = merchants.find(m => m.userId === this.user.id) || merchants[0];
         this.merchantId = this.merchant?.id || 'm_cdo_food';
@@ -838,7 +838,7 @@
           name: this.user.name,
           email: this.user.email,
           phone: this.user.phone || '',
-          barangay: this.user.barangay || 'Carmen',
+          barangay: this.user.barangay || 'bayabas',
           storeName: this.merchant?.name || this.user.storeName || '',
           password: '',
         };

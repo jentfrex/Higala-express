@@ -14,6 +14,11 @@ from routers.auth import get_current_user
 from webhook_service import send_webhook_notification
 from services.dispatcher import assign_nearest_driver
 from services.order_validator import validate_status_transition
+from decimal import Decimal
+import logging
+from services.order_state_machine import OrderStateValidator, OrderStatus
+
+logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -657,3 +662,110 @@ def mark_order_completed(
             "total_platform_revenue_this_order": total_platform_revenue
         }
     }
+
+
+@router.post("/orders/{order_id}/mark-for-delivery")
+def mark_order_for_delivery(order_id: int, db: Session = Depends(get_db)):
+    """After payment confirmed, mark for delivery"""
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+        
+    order.status = "ready_for_delivery"
+    db.commit()
+    return {"success": True, "order_id": order_id, "status": "ready_for_delivery"}
+
+# ==============================================================================
+# STATE MACHINE VALIDATION & STATUS UPDATE ENDPOINTS
+# ==============================================================================
+
+@router.patch("/{order_id}/status")
+def update_order_status(
+    order_id: int,
+    new_status: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Update order status with strict state machine validation"""
+    
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # 1. Validate state transition
+    is_valid, reason = OrderStateValidator.validate_transition(order.status, new_status)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=reason)
+    
+    # 2. Validate user role permission
+    allowed_roles = OrderStateValidator.who_can_transition(order.status, new_status)
+    if current_user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Only {', '.join(allowed_roles)} can perform this transition"
+        )
+    
+    old_status = order.status
+    order.status = new_status
+    
+    try:
+        # 3. Trigger side effects based on transition
+        if new_status == OrderStatus.COMPLETED:
+            _handle_order_completion(order, db)
+        elif new_status == OrderStatus.CANCELLED:
+            _handle_order_cancellation(order, db)
+        
+        db.commit()
+        db.refresh(order)
+        
+        logger.info(
+            f"Order {order_id} transitioned: {old_status} → {new_status} "
+            f"by {current_user.role}#{current_user.id}"
+        )
+        return {"success": True, "order_id": order_id, "status": order.status}
+
+    except Exception as e:
+        db.rollback()  # Prevent lock-ups and corrupt records
+        logger.error(f"Failed to update status for order {order_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
+
+
+def _handle_order_completion(order: models.Order, db: Session):
+    """Safely handle order completion with financial settlements"""
+    order_price = Decimal(str(order.price))
+    merchant_payout = order_price * Decimal("0.80")
+    platform_cut = order_price * Decimal("0.20")
+    
+    # Log transaction to Wallet
+    if hasattr(models, "WalletTransaction"):
+        merchant_owner_id = order.merchant.owner_id if getattr(order, "merchant", None) else None
+        db.add(models.WalletTransaction(
+            user_id=merchant_owner_id,
+            amount=float(merchant_payout),
+            transaction_type="merchant_payout",
+            reference_id=order.id,
+            description=f"Payout for completed order #{order.id}"
+        ))
+    
+    logger.info(f"Order #{order.id} completed: Merchant ₱{merchant_payout}, Platform ₱{platform_cut}")
+
+
+def _handle_order_cancellation(order: models.Order, db: Session):
+    """Safely handle order cancellation with stock restoration and wallet refunds"""
+    
+    # 1. Restore Inventory Stock
+    if hasattr(order, "items") and order.items:
+        for item in order.items:
+            inventory = db.query(models.BranchInventory).filter(
+                models.BranchInventory.branch_id == order.branch_id,
+                models.BranchInventory.product_id == item.product_id
+            ).first()
+            if inventory:
+                inventory.stock_quantity += item.quantity
+    
+    # 2. Refund Customer (Only for paid digital wallet transactions)
+    if getattr(order, "payment_method", "wallet") == "wallet":
+        customer = db.query(models.User).filter(models.User.id == order.customer_id).first()
+        if customer:
+            customer.wallet_balance += float(order.price)
+            logger.info(f"Order #{order.id} cancelled: Refunded ₱{order.price} to customer #{customer.id}")

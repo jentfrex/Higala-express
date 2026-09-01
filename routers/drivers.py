@@ -2,7 +2,6 @@ from datetime import datetime
 import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 import models
@@ -10,48 +9,40 @@ import schemas
 from database import get_db
 from exceptions import OrderAlreadyAcceptedError, ResourceNotFoundError
 from routers.websockets import redis_client
+from core.security import get_current_user
 
 router = APIRouter(
     prefix="/drivers",
     tags=["Drivers"]
 )
 
-security = HTTPBearer(auto_error=False)
-
-# Flexible & Resilient Authentication Dependency for Drivers (Tolerant to pytest & browser tokens)
-def get_current_driver(credentials: Optional[HTTPAuthorizationCredentials] = Security(security), db: Session = Depends(get_db)):
-    # Kung naa sa pytest o walay gihatag nga credentials, i-return dayon ang unang driver para mo-pass ang tests!
-    if not credentials or not credentials.credentials:
-        driver_user = db.query(models.User).filter(models.User.role == "driver").first()
-        if driver_user:
-            return driver_user
-        return db.query(models.User).first()
-
-    token = credentials.credentials
+def get_current_driver(
+    current_user = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+) -> models.User:
+    """
+    Secure driver dependency: Validates the JWT token 
+    and strictly enforces that the user has a 'driver' role.
+    """
+    if current_user.role != "driver":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only drivers can access this endpoint"
+        )
     
-    # 1. Kung naay jwt_token_{id}_{role} format
-    if token.startswith("jwt_token_"):
-        parts = token.split("_")
-        if len(parts) >= 3:
-            try:
-                user_id = int(parts[2])
-                user = db.query(models.User).filter(models.User.id == user_id).first()
-                if user:
-                    return user
-            except ValueError:
-                pass
-                
-    # 2. Fallback: Pangitaa ang bisag unsang driver account sa database
-    driver_user = db.query(models.User).filter(models.User.role == "driver").first()
-    if driver_user:
-        return driver_user
-        
-    # 3. Absolute Fallback: Bisan unsa nga user kung walay driver nga makit-an
-    any_user = db.query(models.User).first()
-    if any_user:
-        return any_user
-        
-    raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+    # Refresh from database to ensure user still exists and role hasn't changed
+    driver = db.query(models.User).filter(
+        models.User.id == current_user.id,
+        models.User.role == "driver"
+    ).first()
+    
+    if not driver:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Driver account not found or disabled"
+        )
+    
+    return driver
 
 
 @router.post("/accept/{order_id}")
