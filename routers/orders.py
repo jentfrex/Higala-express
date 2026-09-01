@@ -745,18 +745,21 @@ def _handle_order_completion(order: models.Order, db: Session):
     
     logger.info(f"Order #{order.id} completed: Merchant ₱{merchant_payout}, Platform ₱{platform_cut}")
 
-
-def _handle_order_cancellation(order: models.Order, db: Session):
-    """Safely handle order cancellation with stock restoration and wallet refunds."""
-    # 1. Restore Inventory Stock
-    if hasattr(order, "items") and order.items:
-        for item in order.items:
-            inventory = db.query(models.BranchInventory).filter(
-                models.BranchInventory.branch_id == order.branch_id,
-                models.BranchInventory.product_id == item.product_id
-            ).first()
-            if inventory:
-                inventory.stock_quantity += item.quantity
+def _handle_order_cancellation(order, db):
+    # Kuhaa ang mga items sa order
+    items = db.query(models.OrderItem).filter(models.OrderItem.order_id == order.id).all()
+    
+    for item in items:
+        # I-fix ang lookup gamit ang branch_id ug item_name (kay mao ni ang anaa sa models.py)
+        inventory = db.query(models.BranchInventory).filter(
+            models.BranchInventory.branch_id == order.branch_id,
+            models.BranchInventory.item_name == item.item_name
+        ).first()
+        
+        if inventory:
+            # I-uli ang stock kung naay current_stock tracking
+            if inventory.current_stock is not None:
+                inventory.current_stock += item.quantity
     
     # 2. Refund Customer (For non-COD transactions)
     if getattr(order, "payment_method", "cod").lower() in ["wallet", "gcash"]:
