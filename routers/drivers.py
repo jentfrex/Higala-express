@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Security
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 
 import models
@@ -10,19 +10,26 @@ from database import get_db
 from exceptions import OrderAlreadyAcceptedError, ResourceNotFoundError
 from routers.websockets import redis_client
 from core.security import get_current_user
+from core.logging import get_logger
+
+logger = get_logger("drivers")
 
 router = APIRouter(
     prefix="/drivers",
     tags=["Drivers"]
 )
 
+# Cagayan de Oro Geofence Boundaries
+CDO_LAT_MIN, CDO_LAT_MAX = 8.30, 8.60
+CDO_LNG_MIN, CDO_LNG_MAX = 124.50, 124.80
+
+
 def get_current_driver(
-    current_user = Depends(get_current_user), 
+    current_user: models.User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ) -> models.User:
     """
-    Secure driver dependency: Validates the JWT token 
-    and strictly enforces that the user has a 'driver' role.
+    Validates driver role and ensures account is approved.
     """
     if current_user.role != "driver":
         raise HTTPException(
@@ -30,7 +37,6 @@ def get_current_driver(
             detail="Only drivers can access this endpoint"
         )
     
-    # Refresh from database to ensure user still exists and role hasn't changed
     driver = db.query(models.User).filter(
         models.User.id == current_user.id,
         models.User.role == "driver"
@@ -40,6 +46,13 @@ def get_current_driver(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Driver account not found or disabled"
+        )
+    
+    # Enforce Directive 3.1: Account approval status check
+    if getattr(driver, "status", "active") == "pending_approval":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Driver account is pending admin approval."
         )
     
     return driver
@@ -63,6 +76,7 @@ def accept_order(
     db.commit()
     db.refresh(order)
     
+    logger.info(f"Driver {current_user.id} accepted order {order.id}")
     return {
         "success": True, 
         "message": "Order accepted successfully", 
@@ -79,6 +93,14 @@ async def update_location(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_driver)
 ):
+    # Enforce Directive 4.1: Geofence Validation within Cagayan de Oro bounds
+    if not (CDO_LAT_MIN <= lat <= CDO_LAT_MAX and CDO_LNG_MIN <= lng <= CDO_LNG_MAX):
+        logger.warning(f"Driver {current_user.id} reported out-of-bounds GPS coordinates: lat={lat}, lng={lng}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GPS coordinates are out of valid Cagayan de Oro bounds."
+        )
+
     current_user.last_lat = lat
     current_user.last_lng = lng
     db.commit()
@@ -92,11 +114,12 @@ async def update_location(
             "lng": lng
         }
         try:
-            await redis_client.publish(room_id, json.dumps(location_payload))
-        except Exception:
-            pass
+            if redis_client:
+                await redis_client.publish(room_id, json.dumps(location_payload))
+        except Exception as e:
+            logger.error(f"Failed to publish location update to Redis: {e}")
 
-    return {"success": True, "message": "Location updated successfully"}
+    return {"success": True, "message": "Location updated successfully within CDO bounds."}
 
 
 @router.post("/service-mode")
@@ -124,6 +147,8 @@ def start_shift(
     new_shift = models.DriverShift(driver_id=current_user.id, is_active=True)
     db.add(new_shift)
     db.commit()
+    
+    logger.info(f"Driver {current_user.id} started shift and went online.")
     return {"success": True, "message": "Shift started, driver is online"}
 
 
@@ -140,8 +165,9 @@ def end_shift(
     ).first()
     
     if shift:
-        shift.end_time = datetime.utcnow()
+        shift.end_time = datetime.now(timezone.utc)
         shift.is_active = False
     
     db.commit()
+    logger.info(f"Driver {current_user.id} ended shift and went offline.")
     return {"success": True, "message": "Shift ended, driver is offline"}
