@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Higala Merchant Registration Hub</title>
+    <title>Higala App - Ultimate Merchant Registration Hub</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -40,14 +40,14 @@
             100% { transform: translateY(-30px) translateX(-20px) scale(0.95); }
         }
         .glass-card {
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.92);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
             border: 1px solid rgba(255, 255, 255, 0.8);
         }
     </style>
 </head>
-<body class="text-slate-800 font-sans antialiased min-h-screen relative flex items-center justify-center p-4 sm:p-6" x-data="merchantRegisterApp()">
+<body class="text-slate-800 font-sans antialiased min-h-screen relative flex items-center justify-center p-3 sm:p-6" x-data="ultimateMerchantApp()">
 
     <!-- Liquid Background -->
     <div class="liquid-bg">
@@ -55,37 +55,71 @@
         <div class="bubble bubble-2"></div>
     </div>
 
-    <!-- REGISTRATION CARD -->
-    <div class="glass-card w-full max-w-2xl p-6 sm:p-8 rounded-3xl shadow-2xl border border-white my-8">
+    <!-- MAIN PORTAL CONTAINER -->
+    <div class="glass-card w-full max-w-3xl p-6 sm:p-10 rounded-3xl shadow-2xl border border-white my-6">
+        
+        <!-- Header -->
         <div class="text-center mb-6">
             <div class="w-16 h-16 bg-amberCustom rounded-2xl mx-auto flex items-center justify-center text-white font-black text-3xl shadow-lg mb-3">H</div>
-            <h2 class="text-2xl font-black text-slate-900">Higala Merchant Registration</h2>
-            <p class="text-xs text-slate-600 mt-1">Field Onboarding & Partnership Agreement (CDO Area)</p>
+            <h2 class="text-2xl font-black text-slate-900" x-text="isLogin ? 'Higala Merchant Log In' : 'Higala Ultimate Merchant Onboarding'"></h2>
+            <p class="text-xs text-slate-600 mt-1" x-text="isLogin ? 'Pagsulod sa eksklusibong merchant dashboard' : 'CDO Enterprise Partner Registration & Compliance Portal'"></p>
         </div>
 
-        <form @submit.prevent="submitRegistration" class="space-y-5">
+        <!-- Mode Switcher Tabs -->
+        <div class="flex bg-slate-200/80 p-1 rounded-xl mb-6">
+            <button @click="isLogin = false" :class="!isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="flex-1 py-2 text-xs font-black rounded-lg transition">Magparehistro (Register)</button>
+            <button @click="isLogin = true" :class="isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="flex-1 py-2 text-xs font-black rounded-lg transition">Nagbaton na og Account (Log In)</button>
+        </div>
+
+        <!-- LOGIN VIEW -->
+        <form x-show="isLogin" @submit.prevent="handleLogin" class="space-y-4">
+            <div class="bg-white/70 p-5 rounded-2xl border border-amber-200 space-y-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email o Contact Number</label>
+                    <input type="text" x-model="loginForm.identifier" placeholder="09171234567 o email@store.com" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Password o Store PIN</label>
+                    <input type="password" x-model="loginForm.password" placeholder="••••••••" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                </div>
+            </div>
+            <button type="submit" class="w-full py-3 bg-amberCustom hover:bg-amberHover text-white font-black rounded-xl text-xs shadow-lg transition">Log In sa Merchant Dashboard</button>
+        </form>
+
+        <!-- REGISTRATION MULTI-STEP VIEW -->
+        <form x-show="!isLogin" @submit.prevent="submitRegistration" class="space-y-6">
             
-            <!-- SECTION 1: Basic Info -->
-            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
+            <!-- STEP INDICATOR -->
+            <div class="flex items-center justify-between px-2 mb-4">
+                <template x-for="step in 3">
+                    <div class="flex items-center space-x-2">
+                        <div :class="currentStep === step ? 'bg-amberCustom text-white shadow-md' : (currentStep > step ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-700')" class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition" x-text="step"></div>
+                        <span class="text-[11px] font-bold uppercase hidden sm:inline" x-text="step === 1 ? 'Basic Info' : (step === 2 ? 'Legal & Compliance' : 'Lokasyon & Payout')"></span>
+                    </div>
+                </template>
+            </div>
+
+            <!-- STEP 1: Basic Info & Operating Hours -->
+            <div x-show="currentStep === 1" class="space-y-4 bg-white/70 p-5 rounded-2xl border border-amber-200">
                 <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">1. Impormasyon sa Negosyo ug Tag-iya</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Pangalan sa Negosyo (Store Name)</label>
-                        <input type="text" x-model="regForm.storeName" placeholder="Pananglitan: Cagayan Rice Trading" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                        <input type="text" x-model="regForm.storeName" placeholder="Cagayan Rice & Trading" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Pangalan sa Tag-iya (Owner Name)</label>
-                        <input type="text" x-model="regForm.ownerName" placeholder="Pananglitan: Juan dela Cruz" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                        <input type="text" x-model="regForm.ownerName" placeholder="Juan dela Cruz" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Contact Number (Globe/TM/Smart)</label>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Contact Number (SMS OTP)</label>
                         <input type="text" x-model="regForm.contact" placeholder="0917-xxx-xxxx" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Kategorya sa Negosyo</label>
-                        <select x-model="regForm.category" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                        <select x-model="regForm.category" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold">
                             <option value="Bigasan / Rice Retail">Bigasan / Rice Retail</option>
                             <option value="Sari-Sari Store">Sari-Sari Store</option>
                             <option value="Food / Meals">Food / Meals</option>
@@ -93,16 +127,63 @@
                         </select>
                     </div>
                 </div>
-            </div>
-
-            <!-- SECTION 2: Location & CDO Barangay -->
-            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
-                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">2. Lokasyon sa CDO & Delivery Radius</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Barangay sa CDO</label>
-                        <select x-model="regForm.barangay" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Backup Manager / Contact Person</label>
+                        <input type="text" x-model="regForm.backupContact" placeholder="Maria dela Cruz (0918...)" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Password para sa Account</label>
+                        <input type="password" x-model="regForm.password" placeholder="••••••••" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button type="button" @click="currentStep = 2" class="px-6 py-2.5 bg-amberCustom text-white text-xs font-black rounded-xl shadow hover:bg-amberHover transition">Sunod (Legal Documents) →</button>
+                </div>
+            </div>
+
+            <!-- STEP 2: Legal & Compliance Screening -->
+            <div x-show="currentStep === 2" class="space-y-4 bg-white/70 p-5 rounded-2xl border border-amber-200">
+                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">2. Legal Compliance & Dokumento</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">DTI / BIR Registration Number</label>
+                        <input type="text" x-model="regForm.taxId" placeholder="DTI-CDO-2026-XXXXX" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Business Permit / BIR 2303 Ref No.</label>
+                        <input type="text" x-model="regForm.permitNo" placeholder="BP-2026-XXXX" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Valid Government ID (Upload / Details)</label>
+                        <input type="text" x-model="regForm.validIdInfo" placeholder="Driver's License / Unified ID No." class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Delivery Vehicle Profile</label>
+                        <select x-model="regForm.vehicle" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold">
+                            <option value="Motorcycle (Delivery Box)">Motorcycle (Delivery Box)</option>
+                            <option value="Trisikel (Tricycle Haul)">Trisikel (Tricycle Haul)</option>
+                            <option value="Multicab / Van">Multicab / Van (Bulk Sacks)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex justify-between pt-2">
+                    <button type="button" @click="currentStep = 1" class="px-5 py-2.5 bg-slate-300 text-slate-800 text-xs font-black rounded-xl hover:bg-slate-400 transition">← Balik</button>
+                    <button type="button" @click="currentStep = 3" class="px-6 py-2.5 bg-amberCustom text-white text-xs font-black rounded-xl shadow hover:bg-amberHover transition">Sunod (Lokasyon & Payout) →</button>
+                </div>
+            </div>
+
+            <!-- STEP 3: CDO Geolocation & Payout Integration -->
+            <div x-show="currentStep === 3" class="space-y-4 bg-white/70 p-5 rounded-2xl border border-amber-200">
+                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">3. CDO Lokasyon & Remittance Gateway</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Barangay sa Cagayan de Oro</label>
+                        <select x-model="regForm.barangay" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold">
                             <option value="Carmen">Carmen</option>
+                            <option value="Bayabas">Bayabas</option>
                             <option value="Divisoria">Divisoria</option>
                             <option value="Kauswagan">Kauswagan</option>
                             <option value="Cugman">Cugman</option>
@@ -117,96 +198,65 @@
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Eksaktong Street / Landmark</label>
-                        <input type="text" x-model="regForm.address" placeholder="Pananglitan: Near Public Market, Osmeña St." class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
+                        <input type="text" x-model="regForm.address" placeholder="Osmeña St. duol sa merkado" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
                     </div>
                 </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Delivery Coverage / Radius</label>
-                    <input type="text" x-model="regForm.deliveryRadius" placeholder="Pananglitan: Within Carmen & Divisoria only" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
-                </div>
-            </div>
-
-            <!-- SECTION 3: Initial Inventory & Operating Hours -->
-            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
-                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">3. Unang Produkto (Initial Catalog) & Oras sa Tindahan</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Ngalan sa Produkto</label>
-                        <input type="text" x-model="regForm.productName" placeholder="Dinorado Special Rice" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Presyo (₱) ug Unit</label>
-                        <input type="text" x-model="regForm.productPrice" placeholder="₱1,250 / 50kg Sack" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Oras sa Tindahan (Hours)</label>
-                        <input type="text" x-model="regForm.operatingHours" placeholder="8:00 AM - 7:00 PM" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SECTION 4: GCash / Payout & Processing Fee Model -->
-            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-amber-200">
-                <h3 class="text-xs font-black text-amberCustom uppercase tracking-wider">4. Payout Account & Partnership Terms</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">GCash / Maya Number para sa Remittance</label>
-                        <input type="text" x-model="regForm.payoutAccount" placeholder="0917-xxx-xxxx (Account Name)" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold" required>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">GCash / Maya Remittance Number</label>
+                        <input type="text" x-model="regForm.payoutAccount" placeholder="0917-xxx-xxxx (Account Name)" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
                     </div>
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Onboarding / Processing Fee Agreement</label>
-                        <select x-model="regForm.feeOption" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold" required>
-                            <option value="Free Promo (0% Setup Fee + 3% Commission per order)">Free Promo (0% Setup Fee + Commission per order)</option>
-                            <option value="Standard Setup (₱150 One-time Processing Fee)">Standard Setup (₱150 One-time Processing Fee)</option>
-                        </select>
+                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Field Enforcer / Referral Code (Opsyonal)</label>
+                        <input type="text" x-model="regForm.referralCode" placeholder="HIGALA-CDO-001" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-amberCustom bg-white text-xs font-semibold">
                     </div>
                 </div>
-            </div>
 
-            <!-- SECTION 5: Digital Partnership Clause & Checkbox -->
-            <div class="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-300 space-y-2">
-                <h4 class="text-[11px] font-black text-slate-800 uppercase">📜 Kasabutan sa Partnership (Merchant Agreement)</h4>
-                <p class="text-[11px] text-slate-600 leading-relaxed">
-                    Pinaagi sa pag-apil sa <strong>Higala App</strong>, ang tag-iya nagpasalig nga ang mga produkto (pananglitan: bugas o baligya) saktong timbang, de-kalidad, ug mosunod sa napag-usapan nga presyo. Ang Higala App manguna sa pagdala og mga kustomer ug online orders ngadto sa tindahan. Ang kita o halin igahin pinaagi sa gikasabutan nga payout schedule.
-                </p>
-                <div class="flex items-start gap-2 pt-1">
-                    <input type="checkbox" x-model="regForm.agreeTerms" id="terms" class="mt-0.5 rounded border-slate-300 text-amberCustom focus:ring-amberCustom" required>
-                    <label for="terms" class="text-[11px] font-bold text-slate-800 leading-tight">
-                        Nagpamatuod ako nga miuyon sa tibuok Kasabutan sa Partnership ug gihatagan og katungod ang Higala App sa pag-onboard sa among negosyo.
-                    </label>
+                <!-- Terms & Conditions Agreement -->
+                <div class="bg-amber-50/90 p-3.5 rounded-xl border border-amber-300 space-y-2 mt-2">
+                    <h4 class="text-[11px] font-black text-slate-900 uppercase">📜 Kasabutan sa Digital Partnership</h4>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        Pinaagi sa pagsumite niini, nagpamatuod ikaw nga ang tanang dokumento tinuod ug mosunod sa kalidad ug saktong timbang sa produkto ubos sa Higala App standards.
+                    </p>
+                    <div class="flex items-start gap-2 pt-1">
+                        <input type="checkbox" x-model="regForm.agreeTerms" id="terms" class="mt-0.5 rounded border-slate-300 text-amberCustom focus:ring-amberCustom" required>
+                        <label for="terms" class="text-[11px] font-bold text-slate-800 leading-tight">
+                            Miuyon ako sa tibuok Kasabutan sa Partnership ug Admin Verification Queue.
+                        </label>
+                    </div>
+                </div>
+
+                <div class="flex justify-between pt-2">
+                    <button type="button" @click="currentStep = 2" class="px-5 py-2.5 bg-slate-300 text-slate-800 text-xs font-black rounded-xl hover:bg-slate-400 transition">← Balik</button>
+                    <button type="submit" class="flex-1 ml-3 py-3 bg-amberCustom hover:bg-amberHover text-white font-black rounded-xl text-xs shadow-lg transition">I-submit ang Ultimate Registration</button>
                 </div>
             </div>
 
-            <!-- Buttons -->
-            <div class="pt-2 flex gap-3">
-                <a href="/static/merchant.html" class="flex-1 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-center text-xs transition">Balik sa Dashboard</a>
-                <button type="submit" class="flex-1 py-3 bg-amberCustom hover:bg-amberHover text-white font-black rounded-xl text-xs shadow-lg transition">I-submit & I-sync sa Sistema</button>
-            </div>
         </form>
     </div>
 
-    <!-- Alpine Script -->
+    <!-- Alpine App Logic Handler -->
     <script>
-        function merchantRegisterApp() {
+        function ultimateMerchantApp() {
             return {
+                isLogin: false,
+                currentStep: 1,
+                loginForm: { identifier: '', password: '' },
                 regForm: {
-                    storeName: '',
-                    ownerName: '',
-                    contact: '',
-                    category: 'Bigasan / Rice Retail',
-                    barangay: 'Carmen',
-                    address: '',
-                    deliveryRadius: '',
-                    productName: '',
-                    productPrice: '',
-                    operatingHours: '',
-                    payoutAccount: '',
-                    feeOption: 'Free Promo (0% Setup Fee + 3% Commission per order)',
-                    agreeTerms: false
+                    storeName: '', ownerName: '', contact: '', category: 'Bigasan / Rice Retail',
+                    backupContact: '', password: '', taxId: '', permitNo: '', validIdInfo: '',
+                    vehicle: 'Motorcycle (Delivery Box)', barangay: 'Carmen', address: '',
+                    payoutAccount: '', referralCode: '', agreeTerms: false
                 },
+                handleLogin() {
+            const storeId = this.loginForm.identifier || 'My Store';
+            const sessionData = { role: 'merchant', user: { storeName: storeId, contact: storeId } };
+            localStorage.setItem('higala_merchant_session', JSON.stringify(sessionData));
+            window.location.replace('merchant.html');
+        },
                 submitRegistration() {
                     if (!this.regForm.agreeTerms) {
-                        alert('Palihog i-check ug i-aprubahan ang Kasabutan sa Partnership.');
+                        alert('Palihog i-check ang Kasabutan sa Partnership.');
                         return;
                     }
                     
@@ -214,13 +264,18 @@
                     let newMerchant = {
                         id: Date.now(),
                         ...this.regForm,
+                        role: 'merchant',
+                        status: 'Pending Admin Review',
                         timestamp: new Date().toLocaleString()
                     };
                     existingPending.push(newMerchant);
                     localStorage.setItem('pendingMerchants', JSON.stringify(existingPending));
 
-                    alert('Tagumpay! Na-encode na ang merchant ug na-sync sa Pending Requests queue sa admin system.');
-                    window.location.href = '/static/admin.html';
+                    // Session isolationguard
+                    localStorage.setItem('higala_session', JSON.stringify({ role: 'merchant', user: newMerchant }));
+
+                    alert('Malampusong na-submit ang imong Rehistro! Gi-diretso ka na sa imong dashboard portal.');
+                    window.location.href = 'merchant.html';
                 }
             }
         }

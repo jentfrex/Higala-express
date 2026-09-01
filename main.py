@@ -122,19 +122,7 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         print("Database tables auto-created successfully.")
 
-    # --- LUWAS NGA PAG-SEED SA AJENTQ ACCOUNT (Gawas sa Circular Import) ---
-    try:
-        from database import SessionLocal
-        from models import User
-        db_session = SessionLocal()
-        
-        # Production safety: never hard-code or reset an administrator
-        # password or real-money wallet balance during application startup.
-        db_session.close()
-        print("Production startup: administrator credentials and wallet balances are not auto-seeded.")
-    except Exception as e:
-        print(f"Error seeding ajentq account: {e}")
-        
+
     yield
     
     print("Initiating graceful shutdown...")
@@ -1609,6 +1597,7 @@ def secret_merchant_portal():
     if os.path.exists(file_path):
         return FileResponse(file_path)
     return HTMLResponse("<h1>404 - merchant.html wala makita</h1>", status_code=404)
+
 @app.get("/hq/portal/driver-apply", tags=["Secure Portals"], response_class=HTMLResponse)
 def secret_driver_apply_portal():
     """Eksklusibong link para sa driver application form"""
