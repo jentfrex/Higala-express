@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 
 import models
 import schemas
@@ -124,28 +125,27 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login/customer", response_model=schemas.Token)
 @limiter.limit("5/minute")
-def login_customer(payload: LoginRequest, db: Session = Depends(get_db)):
+def login_customer(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     """Customer Portal Login Endpoint"""
     return _process_portal_login(payload, "customer", db)
 
-
 @router.post("/login/merchant", response_model=schemas.Token)
 @limiter.limit("5/minute")
-def login_merchant(payload: LoginRequest, db: Session = Depends(get_db)):
+def login_merchant(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     """Merchant Portal Login Endpoint"""
     return _process_portal_login(payload, "merchant", db)
 
 
 @router.post("/login/driver", response_model=schemas.Token)
 @limiter.limit("5/minute")
-def login_driver(payload: LoginRequest, db: Session = Depends(get_db)):
+def login_driver(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     """Driver Portal Login Endpoint"""
     return _process_portal_login(payload, "driver", db)
 
 
 @router.post("/admin/login", response_model=schemas.Token)
 @limiter.limit("5/minute")
-def login_admin(payload: LoginRequest, db: Session = Depends(get_db)):
+def login_admin(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     """Admin Audit & Remittance Portal Login Endpoint"""
     return _process_portal_login(payload, "admin", db)
 
@@ -153,7 +153,7 @@ def login_admin(payload: LoginRequest, db: Session = Depends(get_db)):
 # Generic OAuth2 Token Endpoint for Swagger UI Compatibility
 @router.post("/token", response_model=schemas.Token)
 @limiter.limit("5/minute")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """Standard OAuth2 token endpoint for FastAPI docs."""
     payload = LoginRequest(username=form_data.username, password=form_data.password)
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
