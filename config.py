@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker, Query, declarative_base
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Higala Express API"
     DATABASE_URL: str = "sqlite:///./higala_express.db"
-    SECRET_KEY: str = "your-default-secret-key"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-default-secret-key")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REDIS_URL: str = "redis://localhost:6379"

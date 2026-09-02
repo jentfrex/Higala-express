@@ -1,9 +1,12 @@
+# schemas.py - Production Ready (Complete with Payment & Delivery Fields)
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
+# ==========================================
 # User / Auth Schemas
+# ==========================================
 class UserBase(BaseModel):
     username: str
 
@@ -28,12 +31,16 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
+# ==========================================
 # Order Schemas
+# ==========================================
 class OrderCreate(BaseModel):
     item_description: str
     pickup_location: str
     dropoff_location: str
     price: Optional[float] = 50.0
+    payment_method: Optional[str] = "cod"
+    delivery_address: Optional[str] = None
     landmark_description: Optional[str] = None
     customer_latitude: Optional[float] = None
     customer_longitude: Optional[float] = None
@@ -44,9 +51,12 @@ class OrderOut(BaseModel):
     pickup_location: str
     dropoff_location: str
     price: float
+    delivery_fee: Optional[float] = 0.0
     status: str
     customer_id: int
     driver_id: Optional[int] = None
+    payment_method: str = "cod"
+    delivery_address: Optional[str] = None
     landmark_description: Optional[str] = None
     customer_latitude: Optional[float] = None
     customer_longitude: Optional[float] = None
@@ -57,20 +67,26 @@ class OrderOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ==========================================
 # Webhook / Merchant Schemas
+# ==========================================
 class WebhookSubscribe(BaseModel):
     url: str
     merchant_id: int
 
 
+# ==========================================
 # Support Ticket Schemas
+# ==========================================
 class SupportTicketCreate(BaseModel):
     subject: str
     description: str
     order_id: Optional[int] = None
 
 
-# --- Request Schemas ---
+# ==========================================
+# Request Schemas
+# ==========================================
 
 class RideBookingCreate(BaseModel):
     service_type: str = "standard"
@@ -82,6 +98,9 @@ class RideBookingCreate(BaseModel):
 class FoodOrderCreate(BaseModel):
     merchant_id: int
     total_price: float
+    payment_method: Optional[str] = "cod"
+    delivery_address: Optional[str] = None
+    landmark_description: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -93,7 +112,9 @@ class SOSAlertCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --- Response / Output Schemas (Fixes FastAPI Return Type Errors) ---
+# ==========================================
+# Response / Output Schemas
+# ==========================================
 
 class RideBookingOut(BaseModel):
     id: int
@@ -111,6 +132,8 @@ class FoodOrderOut(BaseModel):
     merchant_id: int
     total_price: float
     status: str
+    payment_method: Optional[str] = "cod"
+    delivery_address: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

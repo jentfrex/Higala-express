@@ -32,33 +32,24 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 @router.websocket("/{order_id}")
-async def order_tracking_websocket(websocket: WebSocket, order_id: int, db: Session = Depends(get_db)):
-    """WebSocket endpoint for drivers to stream location and clients to watch live."""
-    await manager.connect(order_id, websocket)
+async def order_tracking_websocket(
+    websocket: WebSocket, 
+    order_id: int, 
+    token: str = None,
+    db: Session = Depends(get_db)
+):
+    if not token:
+        await websocket.close(code=4001, reason="Authentication required")
+        return
     try:
-        while True:
-            try:
-                # Use a small timeout so the loop never permanently hangs if a client stops sending
-                data = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
-            except asyncio.TimeoutError:
-                # Send a ping/heartbeat check or continue waiting
-                continue
-
-            lat = data.get("lat")
-            lng = data.get("lng")
-            status_val = data.get("status")
-
-            if lat is not None and lng is not None:
-                order = db.query(models.Order.id).filter(models.Order.id == order_id).first()
-                if order:
-                    await manager.broadcast_to_order(order_id, {
-                        "lat": lat,
-                        "lng": lng,
-                        "status": status_val
-                    })
-    except WebSocketDisconnect:
-        manager.disconnect(order_id, websocket)
+        from jose import jwt
+        from config import settings
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        username = payload.get("sub")
+        current_user = db.query(models.User).filter(models.User.username == username).first()
+        if not current_user:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
     except Exception:
-        manager.disconnect(order_id, websocket)
-    finally:
-        manager.disconnect(order_id, websocket)
+        await websocket.close(code=4001, reason="Authentication failed")
+        return

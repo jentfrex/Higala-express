@@ -91,15 +91,13 @@ def get_current_user(
             detail="Token has been revoked (Logged out)",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    # Allow mock tokens for development & testing
-    if token == "mock-super-admin-token":
-        return {"id": 1, "username": "admin_boss", "role": "super_admin", "status": "active", "is_active": True}
-    elif token == "mock-merchant-token":
-        return {"id": 2, "username": "cake_shop_owner", "role": "merchant", "status": "active", "is_active": True}
-    elif token == "mock-customer-token":
-        return {"id": 3, "username": "regular_rider", "role": "customer", "status": "active", "is_active": True}
-
+        if os.getenv("ENVIRONMENT") != "production" and (os.getenv("ALLOW_MOCK_TOKENS") == "1" or os.getenv("TESTING") == "1"):
+            if token == "mock-super-admin-token":
+                return {"id": 1, "username": "admin_boss", "role": "super_admin", "status": "active", "is_active": True}
+            elif token == "mock-merchant-token":
+                return {"id": 2, "username": "cake_shop_owner", "role": "merchant", "status": "active", "is_active": True}
+            elif token == "mock-customer-token":
+                return {"id": 3, "username": "regular_rider", "role": "customer", "status": "active", "is_active": True}
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")

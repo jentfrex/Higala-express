@@ -66,7 +66,7 @@ def accept_order(
 ):
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
-        return {"success": True, "message": f"Order {order_id} accepted successfully (Simulation Mode)."}
+     raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
     
     if order.status.lower() != "pending":
         raise OrderAlreadyAcceptedError()

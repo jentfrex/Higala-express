@@ -19,7 +19,7 @@ def get_driver_earnings_summary(driver_id: int, db: Session = Depends(get_db)):
     ).all()
 
     total_deliveries = driver.total_completed_deliveries or len(completed_orders)
-    total_earned = sum(order.price for order in completed_orders if order.price)
+    total_earned = sum(order.delivery_fee for order in completed_orders if order.delivery_fee)
     payouts = db.query(models.DriverPayout).filter(models.DriverPayout.driver_id == driver_id).all()
 
     # Determine current tier status

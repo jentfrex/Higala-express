@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
+from core.security import get_current_user
+import models
 
 from database import get_db
 from models import BankTransferRequest, Payment, PaymentStatus
@@ -22,7 +24,12 @@ class CommissionUpdatePayload(BaseModel):
 
 # --- Finance & Payout Endpoints ---
 @router.get("/finance/summary", summary="Get Financial Summary & Metrics")
-async def get_financial_summary():
+async def get_financial_summary(
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
     """
     Kuhaa ang kinatibuk-ang financial overview lakip na ang GMV karong adlawa,
     komisyon sa platform, ug pending nga bayronon sa mga drivers (sa PHP).
@@ -38,7 +45,12 @@ async def get_financial_summary():
     }
 
 @router.post("/finance/payouts/batch-trigger", summary="Trigger Manual Payout Batch")
-async def trigger_manual_payout_batch():
+async def trigger_manual_payout_batch(
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
     """
     I-trigger ang manual nga pagpadala sa batch payouts ngadto sa payment gateway processor.
     """
@@ -48,7 +60,14 @@ async def trigger_manual_payout_batch():
     }
 
 @router.patch("/finance/transactions/{tx_id}/override", summary="Override Transaction Status")
-async def override_transaction_status(tx_id: str, payload: TransactionOverridePayload):
+async def override_transaction_status(
+    tx_id: str, 
+    payload: TransactionOverridePayload,
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
     """
     I-override manualmente ang status sa usa ka transaksiyon (Pananglitan: gi-refund o gi-force complete).
     """
@@ -62,7 +81,13 @@ async def override_transaction_status(tx_id: str, payload: TransactionOverridePa
     }
 
 @router.post("/finance/commission", summary="Update Platform Commission Rate")
-async def update_commission_rate(payload: CommissionUpdatePayload):
+async def update_commission_rate(
+    payload: CommissionUpdatePayload,
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
     """
     I-update ang porsyento sa komisyon sa platform (Dynamic Commission Control).
     """
@@ -78,7 +103,13 @@ async def update_commission_rate(payload: CommissionUpdatePayload):
 
 # --- Bank Transfer Verification Endpoints ---
 @router.get("/bank-transfers/pending", summary="Get Pending Bank Transfers")
-def get_pending_transfers(db: Session = Depends(get_db)):
+def get_pending_transfers(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
     """Admin sees all pending bank transfers waiting for manual verification"""
     
     pending = db.query(BankTransferRequest).filter(
@@ -105,8 +136,12 @@ def get_pending_transfers(db: Session = Depends(get_db)):
 @router.post("/bank-transfers/verify/{reference_number}", summary="Verify Bank Transfer")
 def admin_verify_bank_transfer(
     reference_number: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
+    if current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
     """Admin confirms bank transfer was received"""
     
     transfer = db.query(BankTransferRequest).filter(

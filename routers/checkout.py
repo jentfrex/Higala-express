@@ -6,7 +6,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel, Field
@@ -14,12 +14,12 @@ from pydantic import BaseModel, Field
 from database import get_db
 from models import (
     MasterOrder, Order, OrderItem, User, MerchantBranch, BranchInventory,
-    PaymentMethod
+    PaymentMethodEnum
 )
 import models
 from services.payment_service import PaymentService
 from routers.auth import get_current_user
-
+from core.security import limiter
 logger = logging.getLogger("checkout")
 
 router = APIRouter(prefix="/checkout", tags=["Checkout & Payments"])
@@ -92,18 +92,22 @@ class PaymentConfirmationPayload(BaseModel):
 # ==============================================================================
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-@router.post("/", status_code=status.HTTP_201_CREATED)
-def checkout(
-    payload: CheckoutRequest, 
+@limiter.limit("10/minute")
+def checkout_split_cart(
+    payload: CheckoutRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Production-ready multi-vendor checkout with SQLite atomic guarantees, 
+    Production-ready multi-vendor checkout with SQLite atomic guarantees,
     row locking, dynamic CDO fare calculation, and wallet/COD ledger streaming.
     """
+    # Override customer_id with authenticated user
+    payload.customer_id = current_user.id
+
     # Security Guard: Prevent unauthorized checkout on behalf of another user
-    if payload.customer_id != current_user.id and current_user.role != "admin":
+    if payload.customer_id != current_user.id and getattr(current_user, "role", None) != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="Cannot checkout on behalf of another user"
@@ -143,7 +147,12 @@ def checkout(
                     f"Insufficient stock for '{locked_inv.item_name}'. "
                     f"Available: {locked_inv.current_stock}, Requested: {item.quantity}"
                 )
-
+        for locked_inv, item in inventory_items:
+            if abs(locked_inv.price - item.price) > 0.01:
+                raise ValueError(
+                f"Price mismatch for '{locked_inv.item_name}': "
+                f"client sent ₱{item.price:.2f}, actual price is ₱{locked_inv.price:.2f}"
+            )
             inventory_items.append((locked_inv, item))
 
         # 3. Calculate Items Subtotal & CDO Dynamic Delivery Fee

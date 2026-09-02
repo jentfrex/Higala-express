@@ -18,7 +18,6 @@ from core.security import get_current_user
 from core.logging import get_logger
 from webhook_service import send_webhook_notification
 from services.dispatcher import assign_nearest_driver
-from services.order_validator import validate_status_transition
 from services.order_state_machine import OrderStateValidator, OrderStatus
 
 logger = get_logger("orders")
@@ -145,11 +144,7 @@ def get_optional_current_user(request: Request, db: Session = Depends(get_db)):
                 return get_current_user(db=db, token=token)
         except Exception:
             pass
-
-    user = db.query(models.User).filter(models.User.role == "customer").first()
-    if user:
-        return user
-    return db.query(models.User).first()
+    return None
 
 
 # ==============================================================================
@@ -178,23 +173,16 @@ def estimate_order_fare(payload: FareEstimateRequest):
 # 4. ORDER CREATION ENDPOINTS
 # ==============================================================================
 
-@router.post("/checkout/split")
-@limiter.limit("10/minute")
+@router.post("/checkout", status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 def checkout_split_cart(
     request: Request,
     payload: dict,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_optional_current_user)
+    current_user: models.User = Depends(get_current_user)
 ):
-    cust_id = payload.get("customer_id")
-    if cust_id:
-        payload_user = db.query(models.User).filter(models.User.id == cust_id).first()
-        if payload_user:
-            current_user = payload_user
-
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    cust_id = current_user.id
 
     if current_user.role not in ["customer", "merchant", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized to checkout")
@@ -203,7 +191,7 @@ def checkout_split_cart(
     pickup = payload.get("pickup_location", "Storefront / Merchant Location")
     dropoff = payload.get("dropoff_location", "Customer Destination")
     payment_method = payload.get("payment_method", "cod").lower()
-    
+
     calculated_items_total = sum(item.get("price", 0.0) * item.get("quantity", 1) for item in items)
     explicit_total = payload.get("total", payload.get("total_amount"))
     
@@ -308,6 +296,10 @@ def create_order(
     if current_user.role not in ["customer", "merchant", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized to create orders")
 
+    # P1 Security Fix: Validate price to prevent zero or negative price exploits
+    if order.price is None or order.price <= 0:
+        raise HTTPException(status_code=400, detail="Invalid order price. Price must be greater than zero.")
+
     new_order = models.Order(
         item_description=order.item_description,
         pickup_location=order.pickup_location,
@@ -353,20 +345,26 @@ def create_foods_goods_order(
     if current_user.role not in ["customer", "merchant", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized to create orders")
 
+    items_price = order_payload.price
     if order_payload.items:
         items_desc = ", ".join([f"{item.quantity}x {item.name or item.item_name}" for item in order_payload.items])
         summary = f"{order_payload.item_description} ({items_desc})" if order_payload.item_description else items_desc
+        calc_sum = sum(item.price * item.quantity for item in order_payload.items)
+        if calc_sum > 0:
+            items_price = calc_sum
     else:
         summary = order_payload.item_description or "Foods & Goods Order"
 
-    calculated_price = order_payload.price
+    delivery_fee = 0.0
     if (order_payload.merchant_latitude and order_payload.merchant_longitude and 
         order_payload.customer_latitude and order_payload.customer_longitude):
         fare_data = compute_cdo_delivery_fee(
             order_payload.merchant_latitude, order_payload.merchant_longitude,
             order_payload.customer_latitude, order_payload.customer_longitude
         )
-        calculated_price = fare_data["final_delivery_fee"]
+        delivery_fee = fare_data["final_delivery_fee"]
+
+    calculated_price = items_price + delivery_fee
 
     new_order = models.Order(
         item_description=f"[FOODS & GOODS] {summary}",
@@ -416,7 +414,6 @@ def create_foods_goods_order(
         "final_price": calculated_price
     }
 
-
 # ==============================================================================
 # 5. ORDER LISTING & QUERY ENDPOINTS
 # ==============================================================================
@@ -434,6 +431,7 @@ def get_active_customer_orders(
         db.query(models.Order)
         .filter(models.Order.customer_id == target_id)
         .filter(models.Order.status.in_(active_statuses))
+        .filter(models.Order.is_deleted == False)
         .all()
     )
     
@@ -464,7 +462,7 @@ def list_orders(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_user)
 ):
-    query = db.query(models.Order)
+    query = db.query(models.Order).filter(models.Order.is_deleted == False)
     
     if current_user.role == "driver":
         query = query.filter(models.Order.status.ilike("ready_for_pickup"))
@@ -500,9 +498,17 @@ def get_order(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_user)
 ):
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    order = db.query(models.Order).filter(
+        models.Order.id == order_id,
+        models.Order.is_deleted == False
+    ).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+        
+    # Ownership & Role Check (Prevent IDOR Data Leak)
+    if current_user.role == "customer" and order.customer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this order")
+        
     return order
 
 
@@ -525,7 +531,10 @@ def process_order_completion_safely(
         payload = CompleteOrderPayload()
 
     # 1. Atomic row-lock to prevent concurrent double-settlement
-    order = db.query(models.Order).filter(models.Order.id == order_id).with_for_update().first()
+    order = db.query(models.Order).filter(
+        models.Order.id == order_id,
+        models.Order.is_deleted == False
+    ).with_for_update().first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
@@ -535,8 +544,8 @@ def process_order_completion_safely(
 
     # 3. Driver Geofence Check (Must be within 100 meters of customer dropoff)
     if (current_user.role == "driver" and 
-        getattr(order, "customer_latitude", None) and 
-        getattr(order, "customer_longitude", None)):
+    getattr(order, "customer_latitude", None) is not None and 
+    getattr(order, "customer_longitude", None) is not None):
         
         if payload.driver_latitude is None or payload.driver_longitude is None:
             raise HTTPException(status_code=400, detail="Driver location required to complete this order.")
@@ -700,7 +709,10 @@ def update_order_status(
         return process_order_completion_safely(order_id, db, current_user)
 
     # Row-locked check for standard status transitions
-    order = db.query(models.Order).filter(models.Order.id == order_id).with_for_update().first()
+    order = db.query(models.Order).filter(
+        models.Order.id == order_id,
+        models.Order.is_deleted == False
+    ).with_for_update().first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
@@ -729,21 +741,61 @@ def update_order_status(
     )
     return {"success": True, "order_id": order_id, "status": order.status}
 
-
-def _handle_order_cancellation(order, db):
+def _handle_order_cancellation(order: models.Order, db: Session):
+    """Safely handle order cancellation with stock restoration and wallet refunds."""
     items = db.query(models.OrderItem).filter(models.OrderItem.order_id == order.id).all()
     
     for item in items:
-        inventory = db.query(models.BranchInventory).filter(
-            models.BranchInventory.branch_id == order.branch_id,
-            models.BranchInventory.item_name == item.item_name
-        ).first()
+        # Build inventory query using product_id when available (preferred identifier),
+        # falling back to item_name for legacy records without product_id
+        inventory_query = db.query(models.BranchInventory).filter(
+            models.BranchInventory.branch_id == order.branch_id
+        )
         
-        if inventory and inventory.current_stock is not None:
-            inventory.current_stock += item.quantity
+        # Safe attribute checks to avoid AttributeError
+        product_id_val = getattr(item, "product_id", None)
+        item_name_val = getattr(item, "item_name", None)
+        
+        if product_id_val is not None:
+            inventory_query = inventory_query.filter(
+                models.BranchInventory.product_id == product_id_val
+            )
+        elif item_name_val is not None:
+            inventory_query = inventory_query.filter(
+                models.BranchInventory.item_name == item_name_val
+            )
+        
+        inventory = inventory_query.first()
+        
+        if inventory:
+            if getattr(inventory, "current_stock", None) is not None:
+                inventory.current_stock += item.quantity
+            elif hasattr(inventory, "stock_quantity"):
+                inventory.stock_quantity = (inventory.stock_quantity or 0) + item.quantity
+                
+            # Reactivate item availability if stock is restored
+            if hasattr(inventory, "is_available") and inventory.current_stock > 0:
+                inventory.is_available = True
     
-    if getattr(order, "payment_method", "cod").lower() in ["wallet", "gcash"]:
-        customer = db.query(models.User).filter(models.User.id == order.customer_id).first()
+    # Refund wallet balance if paid via digital channels (wallet or gcash)
+    payment_method_val = str(getattr(order, "payment_method", "cod")).lower()
+    if payment_method_val in ["wallet", "gcash", "digital_wallet"] and order.customer_id:
+        customer = db.query(models.User).filter(
+            models.User.id == order.customer_id
+        ).with_for_update().first()
+        
         if customer:
-            customer.wallet_balance = (customer.wallet_balance or 0.0) + float(order.price)
-            logger.info(f"Order #{order.id} cancelled: Refunded ₱{order.price} to customer #{customer.id}")
+            refund_amt = float(order.price or 0.0)
+            customer.wallet_balance = round((customer.wallet_balance or 0.0) + refund_amt, 2)
+            
+            # Record wallet transaction if model exists
+            if hasattr(models, "WalletTransaction"):
+                db.add(models.WalletTransaction(
+                    user_id=customer.id,
+                    amount=refund_amt,
+                    transaction_type="refund",
+                    reference_id=order.id,
+                    description=f"Refund for cancelled order #{order.id}"
+                ))
+            
+            logger.info(f"Order #{order.id} cancelled: Refunded ₱{refund_amt:.2f} to customer #{customer.id}")

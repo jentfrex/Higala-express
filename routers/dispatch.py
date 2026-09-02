@@ -10,7 +10,6 @@ class DispatchRequest(BaseModel):
     merchant_lat: float
     merchant_lon: float
     max_radius_km: float = 5.0
-    driver_username: str | None = None 
 
 @router.post("/find-driver")
 def dispatch_nearest_driver(data: DispatchRequest, db: Session = Depends(get_db)):

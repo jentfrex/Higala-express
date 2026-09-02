@@ -1503,10 +1503,3 @@ def secret_driver_login_portal():
     if os.path.exists(file_path):
         return FileResponse(file_path)
     return HTMLResponse("<h1>404 - driver-login.html wala makita</h1>", status_code=404)
-@app.get("/hq/portal/driver", tags=["Secure Portals"], response_class=HTMLResponse)
-def secret_driver_portal():
-    """Eksklusibong driver dashboard portal"""
-    file_path = os.path.join(_STATIC_DIR, "driver.html")
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    return HTMLResponse("<h1>404 - driver.html wala makita</h1>", status_code=404)

@@ -24,7 +24,10 @@ def process_split_checkout_finances(db: Session, master_order_id: int, platform_
         return False
 
     if customer.wallet_balance < master_order.total_amount:
-        pass
+        raise ValueError(
+            f"Insufficient wallet balance. Available: ₱{customer.wallet_balance:.2f}, "
+            f"Required: ₱{master_order.total_amount:.2f}"
+        )
 
     # Deduct total from customer
     customer.wallet_balance -= master_order.total_amount

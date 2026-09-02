@@ -6,6 +6,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import models
+from core.security import get_current_user
 from database import get_db
 
 router = APIRouter(prefix="/partner-portal", tags=["Partner & Merchant Portal"])
@@ -42,8 +43,12 @@ class OrderCancelRequest(BaseModel):
 @router.get("/dashboard/{merchant_id}")
 def get_merchant_dashboard(
     merchant_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
+    if current_user.id != merchant_id and current_user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized to view this dashboard")
+    
     """
     Real-time merchant dashboard with key metrics.
     Shows orders, revenue, inventory, and payouts.
@@ -416,9 +421,18 @@ def deduct_carinderia_stock(
     branch_id: int, 
     item_id: int, 
     payload: StockDeductRequest, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     """Automatically decrement stock/servings when a dish is ordered. Auto-disables item if stock hits 0."""
+    
+    branch = db.query(models.MerchantBranch).filter(
+        models.MerchantBranch.id == branch_id
+    ).first()
+    
+    if not branch or (branch.merchant_id != current_user.id and current_user.role not in ["admin", "super_admin"]):
+        raise HTTPException(status_code=403, detail="Not authorized to modify this branch's inventory")
+
     item = db.query(models.BranchInventory).filter(
         models.BranchInventory.id == item_id,
         models.BranchInventory.branch_id == branch_id
@@ -426,7 +440,7 @@ def deduct_carinderia_stock(
     
     if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found for this branch")
-        
+
     if item.current_stock is not None:
         item.current_stock = max(0, item.current_stock - payload.quantity_sold)
         if item.current_stock == 0:
@@ -437,9 +451,12 @@ def deduct_carinderia_stock(
     
     return {
         "success": True,
-        "message": f"Deducted {payload.quantity_sold} serving(s) for '{item.item_name}'.",
-        "current_stock": item.current_stock,
-        "is_available": item.is_available
+        "message": f"Successfully deducted {payload.quantity_sold} from item {item.id}.",
+        "item": {
+            "name": getattr(item, "item_name", "Item"),
+            "current_stock": item.current_stock,
+            "is_available": item.is_available
+        }
     }
 
 
@@ -448,9 +465,9 @@ def restock_item(
     branch_id: int,
     item_id: int,
     quantity_added: int = Query(..., gt=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
-    """Increase stock for a specific inventory item and re-enable availability if sold out."""
     item = db.query(models.BranchInventory).filter(
         models.BranchInventory.id == item_id,
         models.BranchInventory.branch_id == branch_id
@@ -477,27 +494,43 @@ def restock_item(
 
 
 @router.post("/branch/{branch_id}/daily-reset")
-def trigger_daily_stock_reset(branch_id: int, db: Session = Depends(get_db)):
+def trigger_daily_stock_reset(
+    branch_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     """
     One-click reset button for partners.
-    Refreshes all daily items (is_daily_special=True) back to their maximum daily stock 
+    Refreshes all daily items (is_daily_special=True) back to their maximum daily stock
     and reactivates their availability.
     """
-    branch = db.query(models.MerchantBranch).filter(models.MerchantBranch.id == branch_id).first()
-    if not branch:
-        raise HTTPException(status_code=404, detail="Micro-hub / Branch not found")
-        
+    branch = db.query(models.MerchantBranch).filter(
+        models.MerchantBranch.id == branch_id
+    ).first()
+    
+    if not branch or (branch.merchant_id != current_user.id and current_user.role not in ["admin", "super_admin"]):
+        raise HTTPException(status_code=403, detail="Not authorized to modify this branch's inventory")
+
     daily_items = db.query(models.BranchInventory).filter(
         models.BranchInventory.branch_id == branch_id,
         models.BranchInventory.is_daily_special == True
     ).all()
-    
+
     reset_count = 0
     for item in daily_items:
         if item.max_daily_stock is not None:
             item.current_stock = item.max_daily_stock
             item.is_available = True
             reset_count += 1
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully reset {reset_count} daily items for branch {branch_id}.",
+        "branch_id": branch_id,
+        "reset_count": reset_count
+    }
             
     db.commit()
     
