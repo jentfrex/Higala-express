@@ -68,6 +68,9 @@ from core.arq_pool import init_arq_pool, close_arq_pool, get_arq_pool
 from exceptions import AppException
 from core.logging import setup_logging
 
+# --- RATE LIMITER INITIALIZATION ---
+limiter = Limiter(key_func=get_remote_address)
+
 # --- Modular Routers (Guarded Import Handling para walay crash kon kulang ang usa) ---
 try:
     from routers import (
