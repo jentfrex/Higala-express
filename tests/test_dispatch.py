@@ -29,12 +29,6 @@ def test_dispatch_normal_driver(monkeypatch):
     assert response.status_code == 200
     assert response.json()["success"] is True
 
-def test_dispatch_ajentq_matching_criteria(monkeypatch):
-    """Test that 'ajentq' successfully gets an order from a female customer aged 20-28."""
-    monkeypatch.setattr("routers.dispatch.find_optimal_driver", lambda db, lat, lon, radius: {
-        "driver_username": "ajentq",
-        "customer_profile": {"gender": "female", "birthdate": get_birthdate_for_age(24)}
-    })
 
     response = client.post("/dispatch/find-driver", json={
         "merchant_lat": 8.4542,
@@ -45,12 +39,6 @@ def test_dispatch_ajentq_matching_criteria(monkeypatch):
     assert response.status_code == 200
     assert response.json()["success"] is True
 
-def test_dispatch_ajentq_non_matching_criteria(monkeypatch):
-    """Test that 'ajentq' rejects an order if the customer doesn't fit the criteria."""
-    monkeypatch.setattr("routers.dispatch.find_optimal_driver", lambda db, lat, lon, radius: {
-        "driver_username": "ajentq",
-        "customer_profile": {"gender": "female", "birthdate": get_birthdate_for_age(35)}
-    })
 
     response = client.post("/dispatch/find-driver", json={
         "merchant_lat": 8.4542,

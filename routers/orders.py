@@ -31,7 +31,7 @@ router = APIRouter(
 )
 
 # ==============================================================================
-# CAGAYAN DE ORO GEOFENCE & FARE PRICING CONSTANTS (Directive 4 & 5)
+# CAGAYAN DE ORO GEOFENCE & FARE PRICING CONSTANTS
 # ==============================================================================
 CDO_LAT_MIN, CDO_LAT_MAX = 8.30, 8.60
 CDO_LNG_MIN, CDO_LNG_MAX = 124.50, 124.80
@@ -47,8 +47,8 @@ LOYALTY_TIER_THRESHOLD = 10    # Deliveries threshold for 6% commission rate
 # ==============================================================================
 
 class CompleteOrderPayload(BaseModel):
-    driver_latitude: Optional[float] = 0.0
-    driver_longitude: Optional[float] = 0.0
+    driver_latitude: Optional[float] = None
+    driver_longitude: Optional[float] = None
     flag_bad_pin: Optional[bool] = False
     pin_feedback: Optional[str] = None
 
@@ -159,7 +159,6 @@ def get_optional_current_user(request: Request, db: Session = Depends(get_db)):
 @router.post("/estimate-fare")
 def estimate_order_fare(payload: FareEstimateRequest):
     """Provides CDO delivery fee calculation prior to order creation."""
-    # Validate CDO bounds
     for lat, lng in [(payload.pickup_lat, payload.pickup_lng), (payload.dropoff_lat, payload.dropoff_lng)]:
         if not (CDO_LAT_MIN <= lat <= CDO_LAT_MAX and CDO_LNG_MIN <= lng <= CDO_LNG_MAX):
             raise HTTPException(
@@ -214,7 +213,6 @@ def checkout_split_cart(
         delivery_fee = payload.get("delivery_fee", 0.0)
         total_price = calculated_items_total + delivery_fee
 
-    # Digital wallet balance verification
     if payment_method == "wallet":
         wallet_balance = getattr(current_user, "wallet_balance", 0.0)
         if wallet_balance < total_price:
@@ -361,7 +359,6 @@ def create_foods_goods_order(
     else:
         summary = order_payload.item_description or "Foods & Goods Order"
 
-    # Fare calculation if coordinates provided
     calculated_price = order_payload.price
     if (order_payload.merchant_latitude and order_payload.merchant_longitude and 
         order_payload.customer_latitude and order_payload.customer_longitude):
@@ -510,7 +507,157 @@ def get_order(
 
 
 # ==============================================================================
-# 6. ORDER COMPLETION & FINANCIAL SETTLEMENTS (Directive 5 & Geofencing)
+# 6. UNIFIED ATOMIC SETTLEMENT & COMPLETION ENGINE (Concurrency-Safe)
+# ==============================================================================
+
+def process_order_completion_safely(
+    order_id: int, 
+    db: Session, 
+    current_user: models.User, 
+    payload: Optional[CompleteOrderPayload] = None
+):
+    """
+    Centralized, idempotent settlement engine with row-level locking (with_for_update),
+    geofence verification, driver tiered payouts, merchant 80/20 split, 
+    and COD ledger streaming. Prevents double-payouts and race conditions.
+    """
+    if payload is None:
+        payload = CompleteOrderPayload()
+
+    # 1. Atomic row-lock to prevent concurrent double-settlement
+    order = db.query(models.Order).filter(models.Order.id == order_id).with_for_update().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # 2. Idempotency Guard (Strict status check)
+    if order.status in ("completed", "delivered"):
+        raise HTTPException(status_code=400, detail="Order is already completed.")
+
+    # 3. Driver Geofence Check (Must be within 100 meters of customer dropoff)
+    if (current_user.role == "driver" and 
+        getattr(order, "customer_latitude", None) and 
+        getattr(order, "customer_longitude", None)):
+        
+        if payload.driver_latitude is None or payload.driver_longitude is None:
+            raise HTTPException(status_code=400, detail="Driver location required to complete this order.")
+            
+        distance_km = calculate_distance(
+            payload.driver_latitude, payload.driver_longitude, 
+            order.customer_latitude, order.customer_longitude
+        )
+        if distance_km > 0.1:  # 100 meters threshold
+            raise HTTPException(
+                status_code=400,
+                detail=f"Geofence Error: {round(distance_km * 1000)}m from dropoff. Must be within 100m."
+            )
+
+    if current_user.role == "driver" and payload.flag_bad_pin:
+        order.pin_is_flagged = True
+        order.pin_feedback = payload.pin_feedback
+        db.add(models.AuditLog(
+            user_id=current_user.id,
+            action=f"BAD_PIN_FLAGGED: Inaccurate pin reported for Order #{order.id}. Note: {payload.pin_feedback}"
+        ))
+
+    # 4. Financial Calculations & Splits
+    items_total = sum(item.price * item.quantity for item in order.items) if hasattr(order, "items") and order.items else 0.0
+    delivery_fee = order.price or 0.0
+
+    platform_merchant_cut = items_total * 0.20
+    merchant_payout_amount = items_total * 0.80
+
+    # Tier-based driver commission rate logic
+    driver_commission_rate = 0.15
+    driver_earnings_rate = 0.85
+    tier_label = "Standard Tier (15% Commission)"
+
+    target_driver_id = order.driver_id or (current_user.id if current_user.role == "driver" else None)
+
+    if target_driver_id:
+        driver = db.query(models.User).filter(models.User.id == target_driver_id).first()
+        if driver:
+            if getattr(driver, "total_completed_deliveries", 0) >= LOYALTY_TIER_THRESHOLD:
+                driver_commission_rate = 0.06
+                driver_earnings_rate = 0.94
+                tier_label = "Loyalty Tier (6% Commission)"
+
+    driver_delivery_earnings = delivery_fee * driver_earnings_rate
+    platform_driver_cut = delivery_fee * driver_commission_rate
+    total_platform_revenue = platform_merchant_cut + platform_driver_cut
+
+    # 5. Wallet Updates (Driver)
+    if target_driver_id:
+        driver = db.query(models.User).filter(models.User.id == target_driver_id).with_for_update().first()
+        if driver:
+            driver.wallet_balance = (driver.wallet_balance or 0.0) + driver_delivery_earnings
+            driver.status = "online"
+            driver.total_completed_deliveries = (driver.total_completed_deliveries or 0) + 1
+            order.driver_id = driver.id
+            
+            if hasattr(models, "WalletTransaction"):
+                db.add(models.WalletTransaction(
+                    user_id=driver.id,
+                    amount=driver_delivery_earnings,
+                    transaction_type="delivery_earnings",
+                    reference_id=order.id,
+                    description=f"Earned delivery fee for Order #{order.id} [{tier_label}]"
+                ))
+
+    # 6. Wallet Updates (Merchant)
+    merchant_owner_id = getattr(order.merchant, "owner_id", None) if getattr(order, "merchant", None) else None
+    if merchant_owner_id:
+        merchant_user = db.query(models.User).filter(models.User.id == merchant_owner_id).with_for_update().first()
+        if merchant_user:
+            merchant_user.wallet_balance = (merchant_user.wallet_balance or 0.0) + merchant_payout_amount
+            
+            if hasattr(models, "WalletTransaction"):
+                db.add(models.WalletTransaction(
+                    user_id=merchant_user.id,
+                    amount=merchant_payout_amount,
+                    transaction_type="merchant_payout",
+                    reference_id=order.id,
+                    description=f"Received 80% item payout for Order #{order.id}"
+                ))
+
+    # 7. Cash on Delivery (COD) Rider Cash Ledger Streaming
+    payment_method = getattr(order, "payment_method", "cod").lower()
+    total_cash_to_collect = items_total + delivery_fee if payment_method == "cod" else 0.0
+    net_cash_due_to_platform = total_cash_to_collect - driver_delivery_earnings
+
+    if target_driver_id and payment_method == "cod" and hasattr(models, "RiderCashLedger"):
+        db.add(models.RiderCashLedger(
+            driver_id=target_driver_id,
+            order_id=order.id,
+            amount_collected=total_cash_to_collect,
+            commission_deducted=platform_driver_cut,
+            net_cash_due=max(net_cash_due_to_platform, 0.0),
+            status="pending_remittance"
+        ))
+
+    # 8. Finalize Order Status & Commit
+    order.status = "completed"
+    db.commit()
+    db.refresh(order)
+
+    return {
+        "success": True,
+        "message": f"Order settled successfully under {tier_label}!",
+        "order_id": order.id,
+        "status": order.status,
+        "breakdown": {
+            "items_total": items_total,
+            "delivery_fee": delivery_fee,
+            "merchant_earned": merchant_payout_amount,
+            "driver_earned": driver_delivery_earnings,
+            "platform_revenue": total_platform_revenue,
+            "payment_method": payment_method,
+            "tier_applied": tier_label
+        }
+    }
+
+
+# ==============================================================================
+# 7. ORDER COMPLETION & STATUS ENDPOINTS
 # ==============================================================================
 
 @router.patch("/{order_id}/complete", response_model=dict)
@@ -524,178 +671,43 @@ def mark_order_completed(
     if current_user.role not in ["driver", "merchant", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized to complete this order")
         
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    if order.status in ["completed", "delivered"]:
-        raise HTTPException(status_code=400, detail="Order is already completed.")
-        
-    if payload is None:
-        payload = CompleteOrderPayload()
-
-    # Driver Geofence Check: Must be within 100 meters of customer dropoff
-    if (current_user.role == "driver" and 
-        getattr(order, "customer_latitude", None) and 
-        getattr(order, "customer_longitude", None) and 
-        payload.driver_latitude and payload.driver_longitude):
-        
-        distance_km = calculate_distance(
-            payload.driver_latitude, payload.driver_longitude, 
-            order.customer_latitude, order.customer_longitude
-        )
-        if distance_km > 0.1:  # 100 meters threshold
-            raise HTTPException(
-                status_code=400,
-                detail=f"Geofence Error: You are {round(distance_km * 1000)} meters away from dropoff. Must be within 100m to complete."
-            )
-
-    if current_user.role == "driver" and payload.flag_bad_pin:
-        order.pin_is_flagged = True
-        order.pin_feedback = payload.pin_feedback
-        audit = models.AuditLog(
-            user_id=current_user.id,
-            action=f"BAD_PIN_FLAGGED: Inaccurate pin reported for Order #{order.id}. Note: {payload.pin_feedback}"
-        )
-        db.add(audit)
-
-    validate_status_transition(order.status, "delivered")
-
-    items_total = sum(item.price * item.quantity for item in order.items) if hasattr(order, "items") and order.items else 0.0
-    delivery_fee = order.price or 0.0
-
-    platform_merchant_cut = items_total * 0.20
-    merchant_payout_amount = items_total * 0.80
-
-    # Tier-based driver commission rate logic
-    driver_commission_rate = 0.15
-    driver_earnings_rate = 0.85
-    tier_label = "Standard Tier (15% Commission)"
-
-    if order.driver_id:
-        driver = db.query(models.User).filter(models.User.id == order.driver_id).first()
-        if driver:
-            if getattr(driver, "total_completed_deliveries", 0) >= LOYALTY_TIER_THRESHOLD:
-                driver_commission_rate = 0.06
-                driver_earnings_rate = 0.94
-                tier_label = "Loyalty Tier (6% Commission)"
-
-    driver_delivery_earnings = delivery_fee * driver_earnings_rate
-    platform_driver_cut = delivery_fee * driver_commission_rate
-    total_platform_revenue = platform_merchant_cut + platform_driver_cut
-
-    # Wallet updates for Driver
-    if order.driver_id:
-        driver = db.query(models.User).filter(models.User.id == order.driver_id).first()
-        if driver:
-            driver.wallet_balance = (driver.wallet_balance or 0.0) + driver_delivery_earnings
-            driver.status = "online"
-            driver.total_completed_deliveries = (driver.total_completed_deliveries or 0) + 1
-            
-            if hasattr(models, "WalletTransaction"):
-                db.add(models.WalletTransaction(
-                    user_id=driver.id,
-                    amount=driver_delivery_earnings,
-                    transaction_type="delivery_earnings",
-                    reference_id=order.id,
-                    description=f"Earned delivery fee for Order #{order.id} [{tier_label}]"
-                ))
-
-    # Wallet updates for Merchant
-    merchant_owner_id = getattr(order.merchant, "owner_id", None) if getattr(order, "merchant", None) else None
-    if merchant_owner_id:
-        merchant_user = db.query(models.User).filter(models.User.id == merchant_owner_id).first()
-        if merchant_user:
-            merchant_user.wallet_balance = (merchant_user.wallet_balance or 0.0) + merchant_payout_amount
-            
-            if hasattr(models, "WalletTransaction"):
-                db.add(models.WalletTransaction(
-                    user_id=merchant_user.id,
-                    amount=merchant_payout_amount,
-                    transaction_type="merchant_payout",
-                    reference_id=order.id,
-                    description=f"Received 80% item payout for Order #{order.id}"
-                ))
-
-    # Directive 5.1: Cash on Delivery (COD) Rider Cash Ledger Streaming
-    payment_method = getattr(order, "payment_method", "cod").lower()
-    total_cash_to_collect = items_total + delivery_fee if payment_method == "cod" else 0.0
-    net_cash_due_to_platform = total_cash_to_collect - driver_delivery_earnings
-
-    if order.driver_id and payment_method == "cod" and hasattr(models, "RiderCashLedger"):
-        cash_ledger = models.RiderCashLedger(
-            driver_id=order.driver_id,
-            order_id=order.id,
-            amount_collected=total_cash_to_collect,
-            commission_deducted=platform_driver_cut,
-            net_cash_due=max(net_cash_due_to_platform, 0.0),
-            status="pending_remittance"
-        )
-        db.add(cash_ledger)
-
-    order.status = "completed"
-    db.commit()
-    db.refresh(order)
-
+    result = process_order_completion_safely(order_id, db, current_user, payload)
+    
     background_tasks.add_task(
         send_webhook_notification,
-        merchant_id=order.customer_id,
+        merchant_id=current_user.id,
         event_type="order.completed",
-        payload={
-            "order_id": order.id, 
-            "status": order.status,
-            "financial_breakdown": {
-                "merchant_earned": merchant_payout_amount,
-                "driver_earned": driver_delivery_earnings,
-                "platform_revenue": total_platform_revenue,
-                "payment_method": payment_method
-            }
-        }
+        payload=result
     )
+    return result
 
-    return {
-        "success": True,
-        "message": f"Order completed successfully under {tier_label}!",
-        "order_id": order.id,
-        "status": order.status,
-        "breakdown": {
-            "items_total": items_total,
-            "delivery_fee": delivery_fee,
-            "merchant_earned_80_percent": merchant_payout_amount,
-            "platform_merchant_commission_20_percent": platform_merchant_cut,
-            "driver_tier_applied": tier_label,
-            "driver_earned_amount": driver_delivery_earnings,
-            "platform_driver_commission_amount": platform_driver_cut,
-            "total_platform_revenue_this_order": total_platform_revenue,
-            "payment_method": payment_method
-        }
-    }
-
-
-# ==============================================================================
-# 7. STATE MACHINE VALIDATION & TRANSITION HANDLERS
-# ==============================================================================
 
 @router.patch("/{order_id}/status")
 def update_order_status(
     order_id: int,
     payload: StatusUpdatePayload,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Update order status with strict state machine validation and financial triggers."""
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    """Update order status with strict state machine validation and safe completion routing."""
+    new_status = payload.new_status.lower()
+
+    # Route completed/delivered statuses directly through the atomic settlement engine to prevent double payouts
+    if new_status in ["completed", "delivered"]:
+        if current_user.role not in ["driver", "merchant", "admin"]:
+            raise HTTPException(status_code=403, detail="Not authorized to complete orders")
+        return process_order_completion_safely(order_id, db, current_user)
+
+    # Row-locked check for standard status transitions
+    order = db.query(models.Order).filter(models.Order.id == order_id).with_for_update().first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
-    new_status = payload.new_status
 
-    # State Machine Transition Validation
     is_valid, reason = OrderStateValidator.validate_transition(order.status, new_status)
     if not is_valid:
         raise HTTPException(status_code=400, detail=reason)
     
-    # Permission Checks
     allowed_roles = OrderStateValidator.who_can_transition(order.status, new_status)
     if current_user.role not in allowed_roles:
         raise HTTPException(
@@ -706,62 +718,30 @@ def update_order_status(
     old_status = order.status
     order.status = new_status
     
-    try:
-        if new_status == OrderStatus.COMPLETED:
-            _handle_order_completion(order, db)
-        elif new_status == OrderStatus.CANCELLED:
-            _handle_order_cancellation(order, db)
-        
-        db.commit()
-        db.refresh(order)
-        
-        logger.info(
-            f"Order {order_id} transitioned: {old_status} → {new_status} by {current_user.role}#{current_user.id}"
-        )
-        return {"success": True, "order_id": order_id, "status": order.status}
-
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to update status for order {order_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
-
-
-def _handle_order_completion(order: models.Order, db: Session):
-    """Safely handle order completion with financial settlements."""
-    order_price = Decimal(str(order.price))
-    merchant_payout = order_price * Decimal("0.80")
-    platform_cut = order_price * Decimal("0.20")
+    if new_status == OrderStatus.CANCELLED:
+        _handle_order_cancellation(order, db)
     
-    if hasattr(models, "WalletTransaction"):
-        merchant_owner_id = order.merchant.owner_id if getattr(order, "merchant", None) else None
-        if merchant_owner_id:
-            db.add(models.WalletTransaction(
-                user_id=merchant_owner_id,
-                amount=float(merchant_payout),
-                transaction_type="merchant_payout",
-                reference_id=order.id,
-                description=f"Payout for completed order #{order.id}"
-            ))
+    db.commit()
+    db.refresh(order)
     
-    logger.info(f"Order #{order.id} completed: Merchant ₱{merchant_payout}, Platform ₱{platform_cut}")
+    logger.info(
+        f"Order {order_id} transitioned: {old_status} → {new_status} by {current_user.role}#{current_user.id}"
+    )
+    return {"success": True, "order_id": order_id, "status": order.status}
+
 
 def _handle_order_cancellation(order, db):
-    # Kuhaa ang mga items sa order
     items = db.query(models.OrderItem).filter(models.OrderItem.order_id == order.id).all()
     
     for item in items:
-        # I-fix ang lookup gamit ang branch_id ug item_name (kay mao ni ang anaa sa models.py)
         inventory = db.query(models.BranchInventory).filter(
             models.BranchInventory.branch_id == order.branch_id,
             models.BranchInventory.item_name == item.item_name
         ).first()
         
-        if inventory:
-            # I-uli ang stock kung naay current_stock tracking
-            if inventory.current_stock is not None:
-                inventory.current_stock += item.quantity
+        if inventory and inventory.current_stock is not None:
+            inventory.current_stock += item.quantity
     
-    # 2. Refund Customer (For non-COD transactions)
     if getattr(order, "payment_method", "cod").lower() in ["wallet", "gcash"]:
         customer = db.query(models.User).filter(models.User.id == order.customer_id).first()
         if customer:

@@ -52,7 +52,7 @@ def setup_database():
             models.User(username="test_webhook_buyer", hashed_password="fake", role="customer", wallet_balance=5000.0, escrow_balance=0.0, status="offline"),
             models.User(username="test_merchant", hashed_password="fake", role="merchant", wallet_balance=1000.0, status="online"),
             models.User(username="test_driver", hashed_password="fake", role="driver", wallet_balance=500.0, status="online", total_completed_deliveries=0),
-            models.User(username="ajentq", hashed_password="fake", role="admin", wallet_balance=1000.0, status="online")
+        
         ]
         for u in users_to_seed:
             if not db.query(models.User).filter_by(username=u.username).first():

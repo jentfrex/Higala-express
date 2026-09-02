@@ -1,7 +1,8 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 import models
 from database import get_db
+from core.security import get_current_user  # Siguruha nga naka-import kini sakto
 
 router = APIRouter(prefix="/earnings", tags=["Driver Earnings"])
 
@@ -50,10 +51,41 @@ def get_driver_earnings_summary(driver_id: int, db: Session = Depends(get_db)):
     }
 
 @router.post("/request-payout/{driver_id}")
-def request_payout(driver_id: int, amount: float, db: Session = Depends(get_db)):
-    """Allow a driver to request a cash-out payout of their earnings."""
+def request_payout(
+    driver_id: int, 
+    amount: float, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Allow a driver to securely request a cash-out payout of their earnings with strict authorization and locks."""
+    
+    # 1. Strict Authorization: Only the driver themselves or an admin can request payout
+    if current_user.id != driver_id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Not authorized to request payout for this account."
+        )
+
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Payout amount must be greater than zero.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Payout amount must be greater than zero."
+        )
+
+    # 2. Row-level locking to prevent race conditions & double-spending
+    driver = db.query(models.User).filter(models.User.id == driver_id).with_for_update().first()
+    if not driver:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
+
+    current_balance = driver.wallet_balance or 0.0
+    if amount > current_balance:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Invalid payout amount. Available wallet balance is only ₱{current_balance}."
+        )
+
+    # 3. Deduct amount from user wallet and create pending payout record
+    driver.wallet_balance = current_balance - amount
 
     new_payout = models.DriverPayout(
         driver_id=driver_id,
@@ -63,10 +95,12 @@ def request_payout(driver_id: int, amount: float, db: Session = Depends(get_db))
     db.add(new_payout)
     db.commit()
     db.refresh(new_payout)
+    db.refresh(driver)
 
     return {
         "success": True,
         "message": "Payout request submitted successfully!",
         "payout_id": new_payout.id,
-        "amount": amount
+        "amount": amount,
+        "remaining_wallet_balance": driver.wallet_balance
     }

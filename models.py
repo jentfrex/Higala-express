@@ -107,6 +107,7 @@ class BranchInventory(Base, SoftDeleteMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     branch_id = Column(Integer, ForeignKey("merchant_branches.id"), nullable=False, index=True)
+    product_id = Column(Integer, nullable=True, index=True)  # <-- Added missing product_id for cancellation mapping
     item_name = Column(String, nullable=False)
     price = Column(Float, nullable=False)
     is_available = Column(Boolean, default=True)  # Branch-specific stock toggle
@@ -181,6 +182,10 @@ class Order(Base, SoftDeleteMixin):
     price = Column(Float, default=50.0)
     status = Column(String, default="pending", index=True)
     
+    # --- Added missing columns required by checkout.py and orders.py ---
+    payment_method = Column(String, default="cod")
+    delivery_address = Column(String, nullable=True)
+    
     customer_id = Column(
         Integer, 
         ForeignKey("users.id", ondelete="RESTRICT"), 
@@ -248,6 +253,7 @@ class OrderItem(Base, SoftDeleteMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), index=True)
+    product_id = Column(Integer, nullable=True, index=True)  # <-- Added missing product_id for order cancellation checks
     item_name = Column(String, nullable=False)
     quantity = Column(Integer, default=1)
     price = Column(Float, default=0.0)
@@ -258,7 +264,7 @@ class OrderItem(Base, SoftDeleteMixin):
 
 # --- New Payment & Commission Models ---
 
-class PaymentMethod(str, Enum):
+class PaymentMethodEnum(str, Enum):
     CASH_ON_DELIVERY = "cash_on_delivery"
     BANK_TRANSFER = "bank_transfer"
     WALLET = "wallet"
@@ -278,7 +284,7 @@ class Payment(Base, SoftDeleteMixin):
     master_order_id = Column(Integer, ForeignKey("master_orders.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     amount = Column(Float, nullable=False)
-    payment_method = Column(String, default=PaymentMethod.WALLET)
+    payment_method = Column(String, default=PaymentMethodEnum.WALLET)
     status = Column(String, default=PaymentStatus.PENDING)
     transaction_reference = Column(String, unique=True, nullable=True)
     notes = Column(String, nullable=True)

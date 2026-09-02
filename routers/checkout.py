@@ -18,6 +18,7 @@ from models import (
 )
 import models
 from services.payment_service import PaymentService
+from routers.auth import get_current_user
 
 logger = logging.getLogger("checkout")
 
@@ -92,11 +93,22 @@ class PaymentConfirmationPayload(BaseModel):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def checkout(payload: CheckoutRequest, db: Session = Depends(get_db)):
+def checkout(
+    payload: CheckoutRequest, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     """
     Production-ready multi-vendor checkout with SQLite atomic guarantees, 
     row locking, dynamic CDO fare calculation, and wallet/COD ledger streaming.
     """
+    # Security Guard: Prevent unauthorized checkout on behalf of another user
+    if payload.customer_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Cannot checkout on behalf of another user"
+        )
+
     if not payload.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 

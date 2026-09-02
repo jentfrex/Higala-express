@@ -8,20 +8,6 @@ def seed_database():
     import models  # Gibutang dinhi sa sulod aron masigurong nahuman na og load ang database ug walay circular import
     db = SessionLocal()
     try:
-        # 1. Check if admin/ajentq account already exists
-        existing_admin = db.query(models.User).filter(models.User.username == "ajentq").first()
-        if not existing_admin:
-            hashed_pw = pwd_context.hash("101391@Jent")
-            admin_user = models.User(
-                username="ajentq",
-                hashed_password=hashed_pw,
-                role="admin",
-                wallet_balance=5000.0,
-                status="online"
-            )
-            db.add(admin_user)
-            db.commit()
-            print("Successfully created 'ajentq' account!")
 
         # 2. Check if test customer already exists
         existing_user = db.query(models.User).filter(models.User.username == "test_customer").first()

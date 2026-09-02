@@ -24,8 +24,6 @@ class HigalaDriverEngine {
         if (loginContainer) loginContainer.style.display = 'none';
         if (dashboardContainer) dashboardContainer.style.display = 'block';
 
-        // I-save ang session aron malikayan ang bisan unsang error
-        localStorage.setItem('higala_driver_session', JSON.stringify({ user: "ajentq", loggedInTime: new Date() }));
         
         this.initElements();
         this.loadState();
