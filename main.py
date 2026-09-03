@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from middleware.metrics_middleware import red_metrics_middleware
 from sqlalchemy.sql import text
 import schemas
 from sqladmin import Admin, ModelView
@@ -230,7 +231,13 @@ async def npc_privacy_masking_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def feature_flag_middleware(request: Request, call_next):
-    request.state.features_enabled = True 
+    # Allow dynamic override via request header or fall back to global app state / default configuration
+    override_flag = request.headers.get("X-Feature-Enabled")
+    if override_flag is not None:
+        request.state.features_enabled = override_flag.lower() in ("true", "1", "yes")
+    else:
+        # Check from app state if configured, otherwise default safely or check specific feature toggles
+        request.state.features_enabled = getattr(app.state, "features_enabled", True)
     return await call_next(request)
 
 @app.middleware("http")
@@ -259,13 +266,7 @@ async def idempotency_and_logging_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = correlation_id
     return response
 
-@app.middleware("http")
-async def red_metrics_middleware(request: Request, call_next):
-    start_time = time.time()
-    response = await call_next(request)
-    duration = time.time() - start_time
-    response.headers["X-Response-Time"] = f"{duration:.4f}s"
-    return response
+app.middleware("http")(red_metrics_middleware)
 
 # --- Instrumentation & Global Error Handlers ---
 app.state.limiter = limiter

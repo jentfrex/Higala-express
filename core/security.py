@@ -15,16 +15,12 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 
-# Configuration Constants (Fallback to safe defaults if config.settings isn't used)
-try:
-    from config import settings
-    SECRET_KEY = getattr(settings, "SECRET_KEY", "your-secret-key-keep-it-secret")
-    ALGORITHM = getattr(settings, "ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES = getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 1440)
-except ImportError:
-    SECRET_KEY = "your-secret-key-keep-it-secret"
-    ALGORITHM = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+# Configuration Constants from central settings
+from config import settings
+
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
@@ -51,7 +47,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def is_token_revoked(token: str) -> bool:
-    """Checks Redis or in-memory blacklist."""
+    """Checks Redis or in-memory blacklist using safe helpers."""
     try:
         from core.redis_client import is_token_blacklisted
         if is_token_blacklisted(token):
@@ -61,13 +57,12 @@ def is_token_revoked(token: str) -> bool:
     return token in _memory_blacklist
 
 def blacklist_token(token: str, expiry_seconds: Optional[int] = None):
-    """Adds a token to the blacklist (handles Redis or memory fallback)."""
+    """Adds a token to the blacklist (handles Redis or memory fallback safely)."""
     try:
-        from core.redis_client import redis_client
-        if redis_client:
-            ex = expiry_seconds or 86400  # Default to 24 hours
-            redis_client.setex(f"blacklist:{token}", ex, "revoked")
-            return
+        from core.redis_client import blacklist_token as redis_blacklist
+        ex = expiry_seconds or 86400  # Default to 24 hours
+        redis_blacklist(token, expire_seconds=ex)
+        return
     except Exception:
         pass
     
@@ -85,15 +80,6 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Check for mock tokens first if in testing/dev mode
-    if os.getenv("ENVIRONMENT") != "production" and (os.getenv("ALLOW_MOCK_TOKENS") == "1" or os.getenv("TESTING") == "1"):
-        if token == "mock-super-admin-token":
-            return {"id": 1, "username": "admin_boss", "role": "super_admin", "status": "active", "is_active": True}
-        elif token == "mock-merchant-token":
-            return {"id": 2, "username": "cake_shop_owner", "role": "merchant", "status": "active", "is_active": True}
-        elif token == "mock-customer-token":
-            return {"id": 3, "username": "regular_rider", "role": "customer", "status": "active", "is_active": True}
-
     # Check if token is blacklisted
     if is_token_revoked(token):
         raise HTTPException(

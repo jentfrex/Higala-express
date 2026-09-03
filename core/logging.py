@@ -10,11 +10,23 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 import sys
 import os
+import contextvars
 from pythonjsonlogger import jsonlogger
 
 # Environment settings
 ENV = os.getenv("ENVIRONMENT", "development")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+# Context variable to hold contextual log data safely across async tasks and threads
+_log_context: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar("_log_context", default={})
+
+class ContextFilter(logging.Filter):
+    """Custom filter to inject context variables safely into LogRecords"""
+    def filter(self, record: logging.LogRecord) -> bool:
+        context = _log_context.get()
+        for key, value in context.items():
+            setattr(record, key, value)
+        return True
 
 
 class CustomJsonFormatter(jsonlogger.JsonFormatter):
@@ -38,10 +50,16 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         if record.exc_info:
             log_record['exception'] = self.format_exception(record.exc_info)
         
-        # Safely pass context IDs when using extra={...}
+        # Safely pass context IDs when using extra={...} or via LogContext
         for attr in ['user_id', 'request_id', 'merchant_id', 'driver_id']:
             if hasattr(record, attr):
                 log_record[attr] = getattr(record, attr)
+                
+        # Include any dynamic keys from contextvars
+        context = _log_context.get()
+        for key, value in context.items():
+            if key not in log_record:
+                log_record[key] = value
     
     @staticmethod
     def format_exception(exc_info):
@@ -149,23 +167,29 @@ logger = setup_logging()
 
 
 class LogContext:
-    """Context manager for appending temporary metadata to execution blocks"""
+    """Async/Thread-safe context manager for appending temporary metadata to execution blocks"""
     
     def __init__(self, **kwargs):
         self.fields = kwargs
-        self.logger = logging.getLogger("higala")
+        self.token = None
     
     def __enter__(self):
-        for key, value in self.fields.items():
-            setattr(logging.LogRecord, key, value)
+        current = _log_context.get().copy()
+        current.update(self.fields)
+        self.token = _log_context.set(current)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        for key in self.fields.keys():
-            if hasattr(logging.LogRecord, key):
-                delattr(logging.LogRecord, key)
+        if self.token:
+            _log_context.reset(self.token)
 
 
 def get_logger(module_name: str) -> logging.Logger:
-    """Utility function to retrieve scoped module loggers"""
-    return logging.getLogger(f"higala.{module_name}")
+    """Utility function to retrieve scoped module loggers with thread-safe context support"""
+    logger_instance = logging.getLogger(f"higala.{module_name}")
+    
+    # Ensure the ContextFilter is added only once
+    if not any(isinstance(f, ContextFilter) for f in logger_instance.filters):
+        logger_instance.addFilter(ContextFilter())
+        
+    return logger_instance

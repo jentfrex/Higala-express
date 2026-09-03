@@ -1,9 +1,9 @@
-﻿import httpx
-import json
+﻿import json
+import httpx
 from sqlalchemy.orm import Session
 import models
 
-def trigger_webhook(db: Session, merchant_id: int, event_type: str, payload_data: dict):
+async def trigger_webhook(db: Session, merchant_id: int, event_type: str, payload_data: dict):
     """
     Finds active webhook subscriptions for a merchant and dispatches 
     the event payload via a POST request, logging the delivery attempt.
@@ -19,6 +19,9 @@ def trigger_webhook(db: Session, merchant_id: int, event_type: str, payload_data
     payload_str = json.dumps(payload_data)
 
     for sub in subscriptions:
+        if sub.event_types and event_type not in sub.event_types:
+            continue
+
         success = False
         response_status = None
         response_body = None
@@ -28,8 +31,8 @@ def trigger_webhook(db: Session, merchant_id: int, event_type: str, payload_data
             if sub.secret:
                 headers["X-Webhook-Secret"] = sub.secret
 
-            with httpx.Client(timeout=5.0) as client:
-                response = client.post(sub.url, content=payload_str, headers=headers)
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(sub.url, content=payload_str, headers=headers)
                 response_status = response.status_code
                 response_body = response.text
                 success = 200 <= response.status_code < 300

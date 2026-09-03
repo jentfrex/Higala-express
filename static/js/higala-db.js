@@ -1,5 +1,5 @@
 /**
- * Higala Express — Unified localStorage Database & Commission Engine
+ * Higala Express — Unified localStorage Database & Commission Engine (Northern Mindanao Multi-Zone Edition)
  * Shared across customer, merchant, driver, and admin dashboards.
  */
 (function (window) {
@@ -30,6 +30,32 @@
   });
 
   const CDO_CENTER = Object.freeze({ lat: 8.4822, lng: 124.6471 });
+  
+  // Northern Mindanao Regional Zones Configuration (Synced with Backend)
+  const NORTHERN_MINDANAO_ZONES = Object.freeze({
+    cdo: {
+      name: 'Cagayan de Oro',
+      minLat: 8.35,
+      maxLat: 8.58,
+      minLng: 124.52,
+      maxLng: 124.78
+    },
+    iligan: {
+      name: 'Iligan City',
+      minLat: 8.15,
+      maxLat: 8.35,
+      minLng: 124.20,
+      maxLng: 124.35
+    },
+    bukidnon: {
+      name: 'Bukidnon Province',
+      minLat: 7.50,
+      maxLat: 8.45,
+      minLng: 124.70,
+      maxLng: 125.40
+    }
+  });
+
   const BARANGAYS = Object.freeze([
     'Carmen', 'Divisoria', 'Kauswagan', 'Bulua', 'Nazareth', 'Lapasan', 'Cugman', 'Macasandig',
   ]);
@@ -68,6 +94,7 @@
   }
 
   function haversineKm(a, b) {
+    if (!a || !b || a.lat == null || a.lng == null || b.lat == null || b.lng == null) return 999999.0;
     const R = 6371;
     const rad = (x) => (x * Math.PI) / 180;
     const dLat = rad(b.lat - a.lat);
@@ -248,17 +275,17 @@
   function getOrders() { return read(KEYS.orders, []); }
   function saveOrders(orders) { write(KEYS.orders, orders); }
 
-    function countTodayRides(driverId) {
-      const day = todayKey();
-      const orders = getOrders().filter((o) => {
-        if (o.status !== 'completed' || o.service !== 'rides') return false;
-        const d = (o.updatedAt || o.createdAt || '').slice(0, 10);
-        return d === day && (o.driverId === driverId);
-      });
-      if (orders.length) return orders.length;
-      const driver = read(KEYS.drivers, []).find((d) => d.id === driverId || d.userId === driverId);
-      return driver ? ((driver.dailyRides || {})[day] || 0) : 0;
-    }
+  function countTodayRides(driverId) {
+    const day = todayKey();
+    const orders = getOrders().filter((o) => {
+      if (o.status !== 'completed' || o.service !== 'rides') return false;
+      const d = (o.updatedAt || o.createdAt || '').slice(0, 10);
+      return d === day && (o.driverId === driverId);
+    });
+    if (orders.length) return orders.length;
+    const driver = read(KEYS.drivers, []).find((d) => d.id === driverId || d.userId === driverId);
+    return driver ? ((driver.dailyRides || {})[day] || 0) : 0;
+  }
 
   function riderCommissionRate(driverId, vehicleType) {
     if (vehicleType === 'car' || vehicleType === 'taxi') return COMMISSION.TAXI;
@@ -390,9 +417,22 @@
 
   function getNotifications() { return read(KEYS.notifications, []); }
 
+  function getNorthernMindanaoZone(lat, lng) {
+    if (lat == null || lng == null) return { valid: false, zone: null };
+    for (const [key, zone] of Object.entries(NORTHERN_MINDANAO_ZONES)) {
+      if (
+        lat >= zone.minLat && lat <= zone.maxLat &&
+        lng >= zone.minLng && lng <= zone.maxLng
+      ) {
+        return { valid: true, zoneKey: key, zoneName: zone.name };
+      }
+    }
+    return { valid: false, zoneKey: null, zoneName: null };
+  }
+
   function isInGeofence(lat, lng) {
-    const bounds = { minLat: 8.35, maxLat: 8.58, minLng: 124.52, maxLng: 124.78 };
-    return lat >= bounds.minLat && lat <= bounds.maxLat && lng >= bounds.minLng && lng <= bounds.maxLng;
+    const res = getNorthernMindanaoZone(lat, lng);
+    return res.valid;
   }
 
   function gmv() {
@@ -412,6 +452,7 @@
     KEYS,
     COMMISSION,
     CDO_CENTER,
+    NORTHERN_MINDANAO_ZONES,
     BARANGAYS,
     ROUTES,
     money,
@@ -437,6 +478,7 @@
     applyPromo,
     pushNotification,
     getNotifications,
+    getNorthernMindanaoZone,
     isInGeofence,
     gmv,
     platformRevenue,

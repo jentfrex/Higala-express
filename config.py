@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 from datetime import datetime
@@ -7,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, Query, declarative_base
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Higala Express API"
     DATABASE_URL: str = "sqlite:///./higala_express.db"
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-default-secret-key")
+    SECRET_KEY: str = Field(..., env="SECRET_KEY")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REDIS_URL: str = "redis://localhost:6379"
@@ -46,11 +47,11 @@ def configure_database(new_engine=None):
     SessionLocal.configure(bind=engine)
     return engine
 
-# Debug information
-print("=" * 60)
-print("DATABASE URL :", get_database_url())
-print("=" * 60)
-
+# Debug information (Only in development)
+    if os.getenv("ENVIRONMENT") != "production":
+        print("=" * 60)
+        print("DATABASE URL :", get_database_url())
+        print("=" * 60)
 
 # -------------------------------
 # Soft Delete Query

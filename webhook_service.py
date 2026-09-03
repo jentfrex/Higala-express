@@ -36,7 +36,7 @@ async def trigger_webhook(
             response_text = None
             success = False
             
-            # Problem 2: Exponential backoff loop (2s, 4s...)
+            # Exponential backoff loop (2s, 4s...)
             for attempt in range(1, max_retries + 1):
                 try:
                     logger.debug(f"Webhook attempt {attempt} to {sub.url}")
@@ -55,7 +55,7 @@ async def trigger_webhook(
                     else:
                         logger.warning(f"Attempt {attempt} failed for {sub.url} (HTTP {status_code})")
                         
-                # Problem 3: Catch exceptions properly to avoid silent failures
+                # Catch exceptions properly to avoid silent failures
                 except httpx.RequestError as e:
                     response_text = f"Network error: {str(e)}"
                     logger.error(f"Attempt {attempt} network exception for {sub.url}: {e}")
@@ -68,7 +68,7 @@ async def trigger_webhook(
                     backoff_delay = 2 ** attempt  
                     await asyncio.sleep(backoff_delay)
 
-            # Problem 1: Dead Letter Queue via WebhookDeliveryLog
+            # Dead Letter Queue via WebhookDeliveryLog
             log_entry = models.WebhookDeliveryLog(
                 merchant_id=merchant_id,
                 event_type=event_type,
@@ -79,12 +79,16 @@ async def trigger_webhook(
             )
             db.add(log_entry)
             
-            # Problem 4: Notify/Disable broken webhooks so merchants know
+            # Notify/Disable broken webhooks so merchants know
             if not success:
                 logger.critical(f"Webhook {sub.id} max retries exhausted. Auto-disabling.")
                 sub.is_active = False  
 
-            db.commit()
+            try:
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to commit webhook delivery log: {e}")
 
 
 def send_webhook_notification(merchant_id: int, event_type: str, payload: dict):
