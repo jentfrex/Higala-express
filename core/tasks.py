@@ -1,6 +1,8 @@
 ﻿from sqlalchemy.orm import Session
 import models
-from database import SessionLocal  # Siguraduha nga naay SessionLocal o Session maker sa imong database.py
+from database import SessionLocal
+from config import settings
+from arq.connections import RedisSettings
 
 async def background_log_audit(ctx, user_id: int, action: str, details: str = None):
     """
@@ -16,3 +18,8 @@ async def background_log_audit(ctx, user_id: int, action: str, details: str = No
         raise
     finally:
         db.close()
+
+# ARQ Worker Settings configuration para basahon gyud ang saktong REDIS_URL sa Render
+class WorkerSettings:
+    functions = [background_log_audit]
+    redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
