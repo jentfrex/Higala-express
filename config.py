@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(..., env="SECRET_KEY")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_URL: str = Field("redis://localhost:6379", env="REDIS_URL")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -48,10 +48,10 @@ def configure_database(new_engine=None):
     return engine
 
 # Debug information (Only in development)
-    if os.getenv("ENVIRONMENT") != "production":
-        print("=" * 60)
-        print("DATABASE URL :", get_database_url())
-        print("=" * 60)
+if os.getenv("ENVIRONMENT") != "production":
+    print("=" * 60)
+    print("DATABASE URL :", get_database_url())
+    print("=" * 60)
 
 # -------------------------------
 # Soft Delete Query
