@@ -80,7 +80,7 @@ def _process_portal_login(login_data: LoginRequest, target_role: str, db: Sessio
         data={"sub": user.username, "role": user_role, "status": user_status},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "role": user_role, "username": user.username}
 
 
 # ==========================================

@@ -61,9 +61,11 @@ async function handleLogin() {
     if (btn) { btn.disabled = true; btn.innerText = 'Logging in...'; }
 
     try {
-        const params = new URLSearchParams({ email, password });
-        const res = await fetch(`${API_BASE}/api/auth/login?${params.toString()}`, {
-            method: 'POST'
+        const params = new URLSearchParams({ username: email, password });
+        const res = await fetch(`${API_BASE}/api/auth/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
         });
         const data = await res.json();
 
@@ -72,10 +74,10 @@ async function handleLogin() {
             return;
         }
 
-        currentUser = { 
-            id: data.user_id, 
-            email, 
-            role: data.role, 
+        currentUser = {
+            id: data.user_id || data.username || email,
+            email,
+            role: data.role || 'customer',
             token: data.access_token,
             name: data.name || 'Higala User',
             phone: data.phone || '',
@@ -91,7 +93,19 @@ async function handleLogin() {
             greenPoints: data.greenPoints || 120,
             loyaltyTier: data.loyaltyTier || 'CDO Local Insider'
         };
-        enterApp();
+
+        // Role-Based Redirection after login
+        const roleRoutes = {
+            customer: '/customer.html',
+            merchant: '/merchant.html',
+            driver: '/driver.html',
+            admin: '/admin.html',
+            super_admin: '/admin.html'
+        };
+
+        const targetRoute = roleRoutes[currentUser.role] || '/customer.html';
+        persistCurrentUser();
+        window.location.href = targetRoute;
     } catch (err) {
         console.error('Login failed:', err);
         showAuthError('Could not reach the server. Please try again.');

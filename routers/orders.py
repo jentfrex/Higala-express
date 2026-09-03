@@ -194,11 +194,11 @@ def checkout_split_cart(
 
     calculated_items_total = sum(item.get("price", 0.0) * item.get("quantity", 1) for item in items)
     explicit_total = payload.get("total", payload.get("total_amount"))
-    
+    delivery_fee = payload.get("delivery_fee", 0.0)
+
     if explicit_total is not None:
         total_price = float(explicit_total)
     else:
-        delivery_fee = payload.get("delivery_fee", 0.0)
         total_price = calculated_items_total + delivery_fee
 
     if payment_method == "wallet":
@@ -221,6 +221,7 @@ def checkout_split_cart(
                 pickup_location=item.get("pickup_location", pickup),
                 dropoff_location=item.get("dropoff_location", dropoff),
                 price=i_price,
+                delivery_fee=delivery_fee,  # FIX #2: keep delivery fee out of item price here too
                 customer_id=current_user.id,
                 merchant_id=m_id,
                 status="pending",
@@ -244,7 +245,8 @@ def checkout_split_cart(
             item_description="Split Cart Order",
             pickup_location=pickup,
             dropoff_location=dropoff,
-            price=total_price,
+            price=total_price - delivery_fee,
+            delivery_fee=delivery_fee,
             customer_id=current_user.id,
             status="pending",
             payment_method=payment_method
@@ -296,7 +298,6 @@ def create_order(
     if current_user.role not in ["customer", "merchant", "admin"]:
         raise HTTPException(status_code=403, detail="Not authorized to create orders")
 
-    # P1 Security Fix: Validate price to prevent zero or negative price exploits
     if order.price is None or order.price <= 0:
         raise HTTPException(status_code=400, detail="Invalid order price. Price must be greater than zero.")
 
@@ -305,6 +306,7 @@ def create_order(
         pickup_location=order.pickup_location,
         dropoff_location=order.dropoff_location,
         price=order.price,
+        delivery_fee=getattr(order, "delivery_fee", 0.0) or 0.0,
         customer_id=current_user.id,
         status="pending",
         landmark_description=getattr(order, "landmark_description", None),
@@ -358,6 +360,18 @@ def create_foods_goods_order(
     delivery_fee = 0.0
     if (order_payload.merchant_latitude and order_payload.merchant_longitude and 
         order_payload.customer_latitude and order_payload.customer_longitude):
+
+        # CDO geofence validation before computing fare
+        for lat, lng, label in [
+            (order_payload.merchant_latitude, order_payload.merchant_longitude, "Merchant location"),
+            (order_payload.customer_latitude, order_payload.customer_longitude, "Customer location"),
+        ]:
+            if not (CDO_LAT_MIN <= lat <= CDO_LAT_MAX and CDO_LNG_MIN <= lng <= CDO_LNG_MAX):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{label} falls outside of valid Cagayan de Oro service zone."
+                )
+
         fare_data = compute_cdo_delivery_fee(
             order_payload.merchant_latitude, order_payload.merchant_longitude,
             order_payload.customer_latitude, order_payload.customer_longitude
@@ -371,6 +385,7 @@ def create_foods_goods_order(
         pickup_location=order_payload.pickup_location,
         dropoff_location=order_payload.dropoff_location,
         price=calculated_price,
+        delivery_fee=delivery_fee,  # FIX #2
         customer_id=current_user.id,
         status="pending",
         payment_method=order_payload.payment_method,
@@ -508,6 +523,14 @@ def get_order(
     # Ownership & Role Check (Prevent IDOR Data Leak)
     if current_user.role == "customer" and order.customer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied to this order")
+
+    if current_user.role == "merchant":
+        merchant_owner_id = getattr(order.merchant, "owner_id", None) if getattr(order, "merchant", None) else None
+        if merchant_owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied to this order")
+
+    if current_user.role == "driver" and order.driver_id not in (None, current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied to this order")
         
     return order
 
@@ -524,8 +547,9 @@ def process_order_completion_safely(
 ):
     """
     Centralized, idempotent settlement engine with row-level locking (with_for_update),
-    geofence verification, driver tiered payouts, merchant 80/20 split, 
-    and COD ledger streaming. Prevents double-payouts and race conditions.
+    state-machine validation, geofence verification, driver tiered payouts,
+    merchant 80/20 split, and COD ledger streaming. Prevents double-payouts,
+    unauthorized self-assignment, and out-of-order transitions.
     """
     if payload is None:
         payload = CompleteOrderPayload()
@@ -542,10 +566,21 @@ def process_order_completion_safely(
     if order.status in ("completed", "delivered"):
         raise HTTPException(status_code=400, detail="Order is already completed.")
 
+    # 2b. State-Machine Guard: completion must follow the defined transition rules
+    #     (FIX #3 — this was previously skipped, allowing "pending" -> "completed" directly)
+    is_valid, reason = OrderStateValidator.validate_transition(order.status, "completed")
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=reason)
+
+    # 2c. Driver Assignment Guard: block an unrelated driver from hijacking someone
+    #     else's assigned order. (FIX #3)
+    if current_user.role == "driver" and order.driver_id and order.driver_id != current_user.id:
+        raise HTTPException(status_code=403, detail="This order is assigned to another driver.")
+
     # 3. Driver Geofence Check (Must be within 100 meters of customer dropoff)
     if (current_user.role == "driver" and 
-    getattr(order, "customer_latitude", None) is not None and 
-    getattr(order, "customer_longitude", None) is not None):
+        getattr(order, "customer_latitude", None) is not None and 
+        getattr(order, "customer_longitude", None) is not None):
         
         if payload.driver_latitude is None or payload.driver_longitude is None:
             raise HTTPException(status_code=400, detail="Driver location required to complete this order.")
@@ -570,7 +605,9 @@ def process_order_completion_safely(
 
     # 4. Financial Calculations & Splits
     items_total = sum(item.price * item.quantity for item in order.items) if hasattr(order, "items") and order.items else 0.0
-    delivery_fee = order.price or 0.0
+    # FIX #2: use the dedicated delivery_fee column; fall back to order.price only
+    # for legacy rows created before this column existed.
+    delivery_fee = order.delivery_fee if order.delivery_fee is not None else (order.price or 0.0)
 
     platform_merchant_cut = items_total * 0.20
     merchant_payout_amount = items_total * 0.80
@@ -580,7 +617,8 @@ def process_order_completion_safely(
     driver_earnings_rate = 0.85
     tier_label = "Standard Tier (15% Commission)"
 
-    target_driver_id = order.driver_id or (current_user.id if current_user.role == "driver" else None)
+    # FIX #3: no more self-assign fallback — driver must already be assigned to the order
+    target_driver_id = order.driver_id
 
     if target_driver_id:
         driver = db.query(models.User).filter(models.User.id == target_driver_id).first()
@@ -601,7 +639,6 @@ def process_order_completion_safely(
             driver.wallet_balance = (driver.wallet_balance or 0.0) + driver_delivery_earnings
             driver.status = "online"
             driver.total_completed_deliveries = (driver.total_completed_deliveries or 0) + 1
-            order.driver_id = driver.id
             
             if hasattr(models, "WalletTransaction"):
                 db.add(models.WalletTransaction(
@@ -746,13 +783,10 @@ def _handle_order_cancellation(order: models.Order, db: Session):
     items = db.query(models.OrderItem).filter(models.OrderItem.order_id == order.id).all()
     
     for item in items:
-        # Build inventory query using product_id when available (preferred identifier),
-        # falling back to item_name for legacy records without product_id
         inventory_query = db.query(models.BranchInventory).filter(
             models.BranchInventory.branch_id == order.branch_id
         )
         
-        # Safe attribute checks to avoid AttributeError
         product_id_val = getattr(item, "product_id", None)
         item_name_val = getattr(item, "item_name", None)
         
@@ -773,11 +807,9 @@ def _handle_order_cancellation(order: models.Order, db: Session):
             elif hasattr(inventory, "stock_quantity"):
                 inventory.stock_quantity = (inventory.stock_quantity or 0) + item.quantity
                 
-            # Reactivate item availability if stock is restored
             if hasattr(inventory, "is_available") and inventory.current_stock > 0:
                 inventory.is_available = True
     
-    # Refund wallet balance if paid via digital channels (wallet or gcash)
     payment_method_val = str(getattr(order, "payment_method", "cod")).lower()
     if payment_method_val in ["wallet", "gcash", "digital_wallet"] and order.customer_id:
         customer = db.query(models.User).filter(
@@ -788,7 +820,6 @@ def _handle_order_cancellation(order: models.Order, db: Session):
             refund_amt = float(order.price or 0.0)
             customer.wallet_balance = round((customer.wallet_balance or 0.0) + refund_amt, 2)
             
-            # Record wallet transaction if model exists
             if hasattr(models, "WalletTransaction"):
                 db.add(models.WalletTransaction(
                     user_id=customer.id,

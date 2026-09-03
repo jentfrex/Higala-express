@@ -45,12 +45,19 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return R * c
 
+
 def compute_cdo_fare(pickup_lat: float, pickup_lng: float, dropoff_lat: float, dropoff_lng: float) -> float:
     """Computes CDO delivery fare with dynamic tier pricing."""
     dist = calculate_haversine_distance(pickup_lat, pickup_lng, dropoff_lat, dropoff_lng)
     if dist <= BASE_DISTANCE_KM:
         return BASE_DELIVERY_FARE
     return round(BASE_DELIVERY_FARE + ((dist - BASE_DISTANCE_KM) * PER_KM_RATE), 2)
+
+
+def validate_cdo_bounds(lat: float, lng: float, label: str = "coordinate"):
+    """Raises if a lat/lng pair falls outside the CDO service zone."""
+    if not (CDO_LAT_MIN <= lat <= CDO_LAT_MAX and CDO_LNG_MIN <= lng <= CDO_LNG_MAX):
+        raise ValueError(f"{label} ({lat}, {lng}) is outside the valid Cagayan de Oro service zone.")
 
 
 # ==============================================================================
@@ -100,7 +107,7 @@ def checkout_split_cart(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Production-ready multi-vendor checkout with SQLite atomic guarantees,
+    Production-ready multi-vendor checkout with SQLite/PostgreSQL atomic guarantees,
     row locking, dynamic CDO fare calculation, and wallet/COD ledger streaming.
     """
     # Override customer_id with authenticated user
@@ -126,9 +133,13 @@ def checkout_split_cart(
         try:
             db.execute(text("BEGIN IMMEDIATE"))
         except Exception:
-            pass # Fallback if DBMS doesn't support explicit BEGIN IMMEDIATE syntax
+            pass  # Fallback if DBMS doesn't support explicit BEGIN IMMEDIATE syntax
 
-        # 2. Lock inventory items and validate stock simultaneously
+        # 2. Lock inventory items, validate stock, and validate price — single pass
+        # FIX #1: previously this was split into two loops and the .append() call
+        # was missing from the first loop, leaving inventory_items permanently empty.
+        # That silently skipped sub-order creation, stock deduction, and commission
+        # calculation while still charging the customer ("phantom checkout").
         inventory_items = []
         for item in payload.items:
             locked_inv = db.query(BranchInventory).filter(
@@ -138,7 +149,7 @@ def checkout_split_cart(
 
             if not locked_inv:
                 raise ValueError(f"Item {item.item_id} not found in branch {item.branch_id}")
-            
+
             if not locked_inv.is_available:
                 raise ValueError(f"Item '{locked_inv.item_name}' is currently unavailable")
 
@@ -147,22 +158,30 @@ def checkout_split_cart(
                     f"Insufficient stock for '{locked_inv.item_name}'. "
                     f"Available: {locked_inv.current_stock}, Requested: {item.quantity}"
                 )
-        for locked_inv, item in inventory_items:
+
             if abs(locked_inv.price - item.price) > 0.01:
                 raise ValueError(
-                f"Price mismatch for '{locked_inv.item_name}': "
-                f"client sent ₱{item.price:.2f}, actual price is ₱{locked_inv.price:.2f}"
-            )
+                    f"Price mismatch for '{locked_inv.item_name}': "
+                    f"client sent ₱{item.price:.2f}, actual price is ₱{locked_inv.price:.2f}"
+                )
+
             inventory_items.append((locked_inv, item))
 
         # 3. Calculate Items Subtotal & CDO Dynamic Delivery Fee
         items_total = sum(item.price * item.quantity for item in payload.items)
-        
+
+        # CDO geofence validation on pickup/dropoff, if coordinates were supplied
+        first_item = payload.items[0]
+        if payload.delivery_lat and payload.delivery_lng:
+            validate_cdo_bounds(payload.delivery_lat, payload.delivery_lng, "Delivery location")
+        if first_item.pickup_lat and first_item.pickup_lng:
+            validate_cdo_bounds(first_item.pickup_lat, first_item.pickup_lng, "Pickup location")
+
         # Calculate dynamic delivery fee if dropoff GPS is provided
         delivery_fee = 0.0
-        if payload.delivery_lat and payload.delivery_lng and payload.items[0].pickup_lat and payload.items[0].pickup_lng:
+        if payload.delivery_lat and payload.delivery_lng and first_item.pickup_lat and first_item.pickup_lng:
             delivery_fee = compute_cdo_fare(
-                payload.items[0].pickup_lat, payload.items[0].pickup_lng,
+                first_item.pickup_lat, first_item.pickup_lng,
                 payload.delivery_lat, payload.delivery_lng
             )
         else:
@@ -222,6 +241,7 @@ def checkout_split_cart(
                 branch_id=branch_id,
                 item_description=item_desc,
                 price=sub_total,
+                delivery_fee=delivery_fee,  # FIX #2: store the real delivery fee separately from item price
                 status="pending",
                 delivery_address=payload.delivery_address or branch.address,
                 customer_latitude=payload.delivery_lat,
@@ -310,11 +330,15 @@ def checkout_split_cart(
 def confirm_payment_receipt(
     payment_id: int,
     payload: PaymentConfirmationPayload,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Admin/system endpoint to confirm digital payment transfer.
     """
+    if getattr(current_user, "role", None) != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
     if hasattr(models, "Payment"):
         payment = db.query(models.Payment).filter(models.Payment.id == payment_id).first()
         if not payment:
