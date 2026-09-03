@@ -28,6 +28,7 @@ from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel, EmailStr, Field
 from typing import Dict, Optional, List
 from prometheus_fastapi_instrumentator import Instrumentator
+from core.metrics import setup_metrics
 from passlib.context import CryptContext
 from datetime import datetime
 import logging
@@ -271,7 +272,7 @@ app.middleware("http")(red_metrics_middleware)
 # --- Instrumentation & Global Error Handlers ---
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=True)
+setup_metrics(app)
 
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
