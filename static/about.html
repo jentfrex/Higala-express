@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - About Us</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-green: #00B14F;
+            --dark-bg: #111111;
+            --amber-liquid: linear-gradient(135deg, #FFB800, #FF8A00, #D4AF37);
+            --text-main: #333333;
+            --light-bg: #F9F9F9;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body { background-color: #FFFFFF; color: var(--text-main); }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 50px; border-bottom: 1px solid #E5E5E5; background: #FFFFFF; position: sticky; top: 0; z-index: 1000; }
+        .logo-container { display: flex; align-items: center; gap: 10px; }
+        .logo-text { font-size: 26px; font-weight: 700; background: var(--amber-liquid); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0px 2px 4px rgba(255, 184, 0, 0.3)); }
+        nav ul { display: flex; list-style: none; gap: 30px; }
+        nav ul li a { text-decoration: none; color: #555555; font-weight: 500; transition: color 0.3s; }
+        nav ul li a:hover { color: var(--primary-green); }
+        .page-header { padding: 60px 50px 40px 50px; background: var(--light-bg); text-align: center; border-bottom: 1px solid #E5E5E5; }
+        .page-header h1 { font-size: 36px; color: #111; margin-bottom: 10px; }
+        .page-header p { font-size: 16px; color: #666; max-width: 600px; margin: 0 auto; }
+        .section { max-width: 1000px; margin: 0 auto; padding: 50px 20px; }
+        .section h2 { font-size: 28px; color: #111; margin-bottom: 20px; text-align: center; }
+        .section p { font-size: 15px; color: #555; line-height: 1.8; margin-bottom: 15px; }
+        .vm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-top: 30px; }
+        .vm-card { background: #FFFFFF; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: left; border-top: 4px solid #FFB800; transition: transform 0.3s, box-shadow 0.3s, border-top-color 0.3s; }
+        .vm-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0, 177, 79, 0.25); border-top-color: var(--primary-green); }
+        .vm-card h3 { margin-bottom: 10px; color: #222; }
+        .vm-card p { font-size: 14px; color: #666; line-height: 1.7; }
+        .values-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 30px; }
+        .value-card { background: #FFFFFF; padding: 25px 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #FFB800; transition: transform 0.3s, box-shadow 0.3s, border-top-color 0.3s; }
+        .value-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0, 177, 79, 0.25); border-top-color: var(--primary-green); }
+        .value-card .icon { font-size: 40px; margin-bottom: 12px; }
+        .value-card h4 { font-size: 16px; color: #222; margin-bottom: 8px; }
+        .value-card p { font-size: 13px; color: #666; line-height: 1.6; }
+        footer { text-align: center; padding: 30px; background: #111; color: #fff; }
+        footer p { font-size: 14px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <div class="logo-text">Higala Express</div>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="contact.html">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Page Header -->
+    <section class="page-header">
+        <h1>About Us</h1>
+        <p>Learn more about Higala Express — your trusted superapp for delivery and e-commerce in Cagayan de Oro.</p>
+    </section>
+
+    <!-- About Content -->
+    <section class="section">
+        <h2>Our Story</h2>
+        <p>Higala Express was founded with a simple yet powerful vision: to connect people, merchants, and riders through seamless technology. Born in Cagayan de Oro, we understand the unique needs of our community and strive to provide fast, reliable, and affordable services that make everyday life easier.</p>
+        <p>As a local superapp, we empower small businesses, create livelihood opportunities for riders, and bring convenience to every household. Our platform is built by CDOans, for CDOans — with a deep commitment to serving our community with integrity and excellence.</p>
+    </section>
+
+    <!-- Vision & Mission -->
+    <section class="section" style="background: var(--light-bg);">
+        <div style="max-width: 1000px; margin: 0 auto;">
+            <h2>Vision & Mission</h2>
+            <div class="vm-grid">
+                <div class="vm-card">
+                    <h3>Our Vision</h3>
+                    <p>To become the leading and most trusted superapp platform providing fast, reliable delivery and e-commerce services across the region.</p>
+                </div>
+                <div class="vm-card">
+                    <h3>Our Mission</h3>
+                    <p>Empowering local merchants, riders, and customers through seamless technology, transparent pricing, and efficient logistics solutions.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Core Values -->
+    <section class="section">
+        <h2>Our Core Values</h2>
+        <div class="values-grid">
+            <div class="value-card">
+                <div class="icon">🤝</div>
+                <h4>Trust</h4>
+                <p>We build lasting relationships through honesty and reliability.</p>
+            </div>
+            <div class="value-card">
+                <div class="icon">⚡</div>
+                <h4>Speed</h4>
+                <p>Fast service delivery is at the heart of everything we do.</p>
+            </div>
+            <div class="value-card">
+                <div class="icon">💚</div>
+                <h4>Community</h4>
+                <p>We grow by empowering local businesses and riders.</p>
+            </div>
+            <div class="value-card">
+                <div class="icon">🌟</div>
+                <h4>Excellence</h4>
+                <p>We strive for the highest quality in every transaction.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Higala Express. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>

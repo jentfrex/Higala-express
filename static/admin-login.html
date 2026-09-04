@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - Secure Admin Access</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-green: #00B14F;
+            --dark-bg: #111111;
+            --amber-liquid: linear-gradient(135deg, #FFB800, #FF8A00, #D4AF37);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0c0a09 0%, #1c1917 50%, #0c0a09 100%);
+        }
+        .login-container {
+            background: rgba(28, 25, 23, 0.95);
+            border: 1px solid rgba(217, 119, 6, 0.3);
+            border-radius: 20px;
+            padding: 50px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(217, 119, 6, 0.1);
+        }
+        .logo-icon {
+            width: 70px;
+            height: 70px;
+            background: var(--amber-liquid);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 900;
+            color: #1c1917;
+            margin: 0 auto 20px;
+            box-shadow: 0 8px 20px rgba(217, 119, 6, 0.3);
+        }
+        .login-title {
+            text-align: center;
+            color: #fbbf24;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+        .login-subtitle {
+            text-align: center;
+            color: #92400e;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+        .form-group { margin-bottom: 18px; }
+        .form-group label {
+            display: block;
+            color: #a8a29e;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(12, 10, 9, 0.8);
+            border: 1px solid rgba(217, 119, 6, 0.2);
+            border-radius: 10px;
+            color: #fafaf9;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .form-group input:focus {
+            border-color: #d97706;
+            box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+        }
+        .form-group input::placeholder { color: #57534e; }
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--amber-liquid);
+            border: none;
+            border-radius: 10px;
+            color: #1c1917;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(217, 119, 6, 0.3);
+        }
+        .error-msg {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #78716c;
+            font-size: 12px;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        .back-link:hover { color: #d97706; }
+        .security-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(217, 119, 6, 0.15);
+            color: #57534e;
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo-icon">H</div>
+        <h1 class="login-title">COMMAND TOWER</h1>
+        <p class="login-subtitle">Secure Admin Access Only</p>
+        <div id="errorMsg" class="error-msg"></div>
+
+        <form id="adminLoginForm" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label>Admin Email</label>
+                <input type="email" id="adminEmail" placeholder="admin@higala.ph" required>
+            </div>
+            <div class="form-group">
+                <label>Security Code / Password</label>
+                <input type="password" id="adminPassword" placeholder="Enter your security code" required>
+            </div>
+            <button type="submit" class="login-btn">🔐 Access Command Tower</button>
+        </form>
+
+        <a href="index.html" class="back-link">← Back to Main Portal</a>
+
+        <div class="security-badge">
+            <span>🔒</span>
+            <span>Encrypted Connection • Authorized Personnel Only</span>
+        </div>
+    </div>
+
+    <script>
+        function hashPassword(pw) {
+            return btoa(unescape(encodeURIComponent(String(pw || ''))));
+        }
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('adminEmail').value.trim();
+            const password = document.getElementById('adminPassword').value;
+            const errorMsg = document.getElementById('errorMsg');
+
+            if (!email || !password) {
+                errorMsg.textContent = 'Please fill in all fields.';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            // Validate admin credentials against DB
+            const users = JSON.parse(localStorage.getItem('higala_users') || '[]');
+            const hashedPassword = hashPassword(password);
+            const admin = users.find(u => u.email === email && u.password === hashedPassword && u.role === 'admin');
+
+            if (!admin) {
+                errorMsg.textContent = 'Invalid admin credentials. Access denied.';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            // Store session in the format expected by HigalaDB
+            const session = {
+                userId: admin.id,
+                role: 'admin',
+                at: new Date().toISOString()
+            };
+            localStorage.setItem('higala_session', JSON.stringify(session));
+
+            // Also store admin-specific session
+            localStorage.setItem('higala_admin_session', JSON.stringify({
+                role: 'admin',
+                email: admin.email,
+                name: admin.name,
+                at: new Date().toISOString()
+            }));
+
+            // Redirect to admin dashboard
+            window.location.href = 'admin.html';
+        }
+    </script>
+</body>
+</html>

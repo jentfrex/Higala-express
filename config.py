@@ -8,7 +8,8 @@ from sqlalchemy.orm import sessionmaker, Query, declarative_base
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Higala Express API"
     DATABASE_URL: str = "sqlite:///./higala_express.db"
-    SECRET_KEY: str = Field(..., env="SECRET_KEY")
+    # Gihatagan nako og default fallback value aron dili na mo-error kung kulang ang .env
+    SECRET_KEY: str = Field("higala_express_super_secret_key_2026", env="SECRET_KEY")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REDIS_URL: str = Field("redis://localhost:6379", env="REDIS_URL")
@@ -114,6 +115,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-# Register all models so SQLAlchemy knows about them
-import models

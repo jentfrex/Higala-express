@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - Contact Us</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-green: #00B14F;
+            --dark-bg: #111111;
+            --amber-liquid: linear-gradient(135deg, #FFB800, #FF8A00, #D4AF37);
+            --text-main: #333333;
+            --light-bg: #F9F9F9;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body { background-color: #FFFFFF; color: var(--text-main); }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 50px; border-bottom: 1px solid #E5E5E5; background: #FFFFFF; position: sticky; top: 0; z-index: 1000; }
+        .logo-container { display: flex; align-items: center; gap: 10px; }
+        .logo-text { font-size: 26px; font-weight: 700; background: var(--amber-liquid); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0px 2px 4px rgba(255, 184, 0, 0.3)); }
+        nav ul { display: flex; list-style: none; gap: 30px; }
+        nav ul li a { text-decoration: none; color: #555555; font-weight: 500; transition: color 0.3s; }
+        nav ul li a:hover { color: var(--primary-green); }
+        .page-header { padding: 60px 50px 40px 50px; background: var(--light-bg); text-align: center; border-bottom: 1px solid #E5E5E5; }
+        .page-header h1 { font-size: 36px; color: #111; margin-bottom: 10px; }
+        .page-header p { font-size: 16px; color: #666; max-width: 600px; margin: 0 auto; }
+        .contact-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; max-width: 1100px; margin: 0 auto; padding: 50px 20px; }
+        .contact-card { background: #FFFFFF; padding: 35px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #FFB800; transition: transform 0.3s, box-shadow 0.3s, border-top-color 0.3s; }
+        .contact-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0, 177, 79, 0.25); border-top-color: var(--primary-green); }
+        .contact-card .icon { font-size: 48px; margin-bottom: 15px; }
+        .contact-card h3 { font-size: 18px; color: #222; margin-bottom: 10px; }
+        .contact-card p { font-size: 14px; color: #666; line-height: 1.6; }
+        .contact-card a { color: #FFB800; text-decoration: none; font-weight: 600; transition: color 0.3s; }
+        .contact-card a:hover { color: var(--primary-green); }
+        .form-section { max-width: 700px; margin: 0 auto; padding: 50px 20px; }
+        .form-section h2 { font-size: 28px; color: #111; margin-bottom: 25px; text-align: center; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-size: 14px; font-weight: 600; color: #333; margin-bottom: 6px; }
+        .form-group input, .form-group textarea { width: 100%; padding: 12px 15px; border: 1px solid #E5E5E5; border-radius: 8px; font-size: 14px; font-family: 'Poppins', sans-serif; transition: border-color 0.3s; }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--primary-green); }
+        .form-group textarea { resize: vertical; min-height: 120px; }
+        .submit-btn { display: inline-block; padding: 14px 40px; background: var(--amber-liquid); color: #111; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; transition: transform 0.3s, box-shadow 0.3s; }
+        .submit-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(255, 184, 0, 0.4); }
+        footer { text-align: center; padding: 30px; background: #111; color: #fff; }
+        footer p { font-size: 14px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <div class="logo-text">Higala Express</div>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="contact.html">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Page Header -->
+    <section class="page-header">
+        <h1>Contact Us</h1>
+        <p>Have questions, concerns, or feedback? We'd love to hear from you. Reach out to us through any of the channels below.</p>
+    </section>
+
+    <!-- Contact Cards -->
+    <div class="contact-container">
+        <div class="contact-card">
+            <div class="icon">📞</div>
+            <h3>Call Us</h3>
+            <p>Talk to our support team</p>
+            <p><a href="tel:+639171234567">+63 917 123 4567</a></p>
+        </div>
+        <div class="contact-card">
+            <div class="icon">📧</div>
+            <h3>Email Us</h3>
+            <p>Send us your inquiries</p>
+            <p><a href="mailto:support@higala.ph">support@higala.ph</a></p>
+        </div>
+        <div class="contact-card">
+            <div class="icon">📍</div>
+            <h3>Visit Us</h3>
+            <p>Our office location</p>
+            <p>Cagayan de Oro City, Misamis Oriental</p>
+        </div>
+        <div class="contact-card">
+            <div class="icon">💬</div>
+            <h3>Live Chat</h3>
+            <p>Chat with us on Facebook</p>
+            <p><a href="#">Higala Express Official</a></p>
+        </div>
+    </div>
+
+    <!-- Contact Form -->
+    <section class="form-section">
+        <h2>Send Us a Message</h2>
+        <form onsubmit="event.preventDefault(); alert('Thank you for your message! We will get back to you soon.');">
+            <div class="form-group">
+                <label for="name">Full Name</label>
+                <input type="text" id="name" placeholder="Enter your full name" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" placeholder="Enter your email" required>
+            </div>
+            <div class="form-group">
+                <label for="subject">Subject</label>
+                <input type="text" id="subject" placeholder="What is this about?">
+            </div>
+            <div class="form-group">
+                <label for="message">Message</label>
+                <textarea id="message" placeholder="Write your message here..." required></textarea>
+            </div>
+            <button type="submit" class="submit-btn">Send Message</button>
+        </form>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Higala Express. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>

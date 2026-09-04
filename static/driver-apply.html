@@ -211,8 +211,39 @@
 
     function submitApplication(e) {
         e.preventDefault();
-        let name = document.getElementById('app-name').value;
-        alert(`Malampusong na-register ang ${name} isip opisyal nga Admin driver sa sistema!`);
+        var name = document.getElementById('app-name').value.trim();
+        var phone = document.getElementById('app-phone').value.trim();
+        var address = document.getElementById('app-address').value.trim();
+        var license = document.getElementById('app-license').value.trim();
+        var expiry = document.getElementById('app-expiry').value;
+        var vehicle = document.getElementById('app-vehicle-model') ? document.getElementById('app-vehicle-model').value.trim() : '';
+        var letter = document.getElementById('app-letter') ? document.getElementById('app-letter').value.trim() : '';
+        var agree = document.getElementById('app-agree').checked;
+        var files = document.getElementById('app-files').files;
+
+        if (!name || name.length < 3) { alert('Please enter your full name.'); return; }
+        if (!phone || !/^09\d{9}$/.test(phone.replace(/\s/g, ''))) { alert('Please enter a valid mobile number (09XXXXXXXXX).'); return; }
+        if (!address || address.length < 5) { alert('Please enter your complete address.'); return; }
+        if (!license || license.length < 5) { alert('Please enter a valid License number.'); return; }
+        if (!expiry) { alert('Please enter your license expiry date.'); return; }
+        var expiryDate = new Date(expiry);
+        if (expiryDate < new Date()) { alert('Your License has expired. Please renew.'); return; }
+        if (!vehicle) { alert('Please enter your vehicle model and plate number.'); return; }
+        if (!letter || letter.length < 20) { alert('Please write a brief application letter.'); return; }
+        if (!agree) { alert('You must agree to the service terms.'); return; }
+
+        var docFlags = { hasLicense: true, hasValidExpiry: true, docCount: files.length, verified: false };
+
+        var apps = JSON.parse(localStorage.getItem('higala_driver_applications') || '[]');
+        var app = { id: 'DRV-' + Date.now(), name: name, phone: phone, address: address, license: license, vehicle: vehicle, documents: docFlags, status: 'pending_screening', submittedAt: new Date().toISOString() };
+        apps.push(app);
+        localStorage.setItem('higala_driver_applications', JSON.stringify(apps));
+
+        var notifs = JSON.parse(localStorage.getItem('higala_admin_notifications') || '[]');
+        notifs.unshift({ type: 'driver_application', priority: 'high', message: 'New driver: ' + name, applicationId: app.id, at: new Date().toISOString(), read: false });
+        localStorage.setItem('higala_admin_notifications', JSON.stringify(notifs));
+
+        alert('APPLICATION SUBMITTED!\nID: ' + app.id + '\nName: ' + name + '\n\nYour application will undergo Background Check, Interview, and Physical Test.\n\nAdmin has been notified.');
         e.target.reset();
     }
     </script>

@@ -98,9 +98,8 @@ class PaymentConfirmationPayload(BaseModel):
 # CHECKOUT ENDPOINTS
 # ==============================================================================
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
 def checkout_split_cart(
+    request: Request,
     payload: CheckoutRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),

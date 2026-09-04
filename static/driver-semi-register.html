@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - Driver Application</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-green: #00B14F;
+            --dark-bg: #111111;
+            --amber-liquid: linear-gradient(135deg, #FFB800, #FF8A00, #D4AF37);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            padding: 40px 20px;
+        }
+        .form-container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .form-header {
+            background: linear-gradient(135deg, #1c1917 0%, #292524 100%);
+            padding: 35px 40px;
+            text-align: center;
+        }
+        .form-header .icon { font-size: 48px; margin-bottom: 12px; }
+        .form-header h1 { color: #fbbf24; font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+        .form-header p { color: #a8a29e; font-size: 13px; }
+        .form-body { padding: 35px 40px; }
+        .section-title {
+            font-size: 14px; font-weight: 700; color: #d97706;
+            text-transform: uppercase; letter-spacing: 1px;
+            margin-bottom: 20px; padding-bottom: 8px; border-bottom: 2px solid #fef3c7;
+        }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 600; color: #44403c; margin-bottom: 5px; }
+        .form-group label .required { color: #dc2626; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 12px 14px; border: 2px solid #e5e7eb; border-radius: 10px;
+            font-size: 13px; font-family: 'Poppins', sans-serif; outline: none; transition: all 0.3s;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: #d97706; box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.1);
+        }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+        .checkbox-group { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+        .checkbox-group input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; accent-color: #d97706; }
+        .checkbox-group label { font-size: 12px; color: #57534e; line-height: 1.5; }
+        .submit-btn {
+            width: 100%; padding: 16px; background: var(--amber-liquid); border: none; border-radius: 12px;
+            color: #1c1917; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 20px;
+            transition: all 0.3s; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .submit-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(217, 119, 6, 0.3); }
+        .back-link { display: block; text-align: center; margin-top: 20px; color: #78716c; font-size: 13px; text-decoration: none; transition: color 0.3s; }
+        .back-link:hover { color: #d97706; }
+        .notice-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #fbbf24;
+            border-radius: 10px; padding: 15px 20px; margin-bottom: 25px; font-size: 12px; color: #92400e; line-height: 1.6;
+        }
+        .notice-box strong { display: block; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <div class="form-header">
+            <div class="icon">🏍️</div>
+            <h1>Driver Application</h1>
+            <p>Join the Higala Express delivery team in Cagayan de Oro</p>
+        </div>
+        <div class="form-body">
+            <div class="notice-box">
+                <strong>⚠️ Screening & Safety Protocol Notice</strong>
+                All driver applications undergo a thorough background check, personal interview, and physical test to ensure the safety of our customers and the integrity of our network.
+            </div>
+
+            <form id="driverForm" onsubmit="submitApplication(event)">
+                <h3 class="section-title">Personal Information</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>First Name <span class="required">*</span></label>
+                        <input type="text" name="firstName" required placeholder="Juan">
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name <span class="required">*</span></label>
+                        <input type="text" name="lastName" required placeholder="Dela Cruz">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date of Birth <span class="required">*</span></label>
+                        <input type="date" name="dob" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Barangay <span class="required">*</span></label>
+                        <select name="barangay" required>
+                            <option value="">Select Barangay</option>
+                            <option>1-40 (Poblacion)</option>
+                            <option>Agusan</option>
+                            <option>Balubal</option>
+                            <option>Bugo</option>
+                            <option>Carmen</option>
+                            <option>Cogon</option>
+                            <option>Indahag</option>
+                            <option>Kauswagan</option>
+                            <option>Lapasan</option>
+                            <option>Puntod</option>
+                            <option>Tablon</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3 class="section-title">Vehicle Information</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Vehicle Type <span class="required">*</span></label>
+                        <select name="vehicleType" required>
+                            <option value="">Select Vehicle</option>
+                            <option>Motorcycle</option>
+                            <option>Bicycle</option>
+                            <option>Car</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Plate Number / OR Number</label>
+                        <input type="text" name="plateNumber" placeholder="ABC 1234">
+                    </div>
+                </div>
+
+                <h3 class="section-title">Requirements Checklist</h3>
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="validId" name="validId" required>
+                        <label for="validId">I have a valid government-issued ID (Driver's License, Passport, etc.)</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="clearance" name="clearance">
+                        <label for="clearance">I can provide NBI/Police Clearance upon request</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="backgroundCheck" name="backgroundCheck" required>
+                        <label for="backgroundCheck">I consent to a background check as part of the screening process</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="interview" name="interview" required>
+                        <label for="interview">I am available for a personal interview and physical test</label>
+                    </div>
+                </div>
+
+                <h3 class="section-title">Additional Notes</h3>
+                <div class="form-group">
+                    <textarea name="notes" placeholder="Tell us about your driving experience, availability, or any questions you have..."></textarea>
+                </div>
+
+                <button type="submit" class="submit-btn">Submit Application</button>
+            </form>
+
+            <a href="index.html" class="back-link">← Back to Main Portal</a>
+        </div>
+    </div>
+
+    <script>
+        function submitApplication(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+
+            const applications = JSON.parse(localStorage.getItem('higala_driver_applications') || '[]');
+            applications.push({
+                ...data,
+                id: 'DRV-' + Date.now(),
+                status: 'pending_review',
+                submittedAt: new Date().toISOString()
+            });
+            localStorage.setItem('higala_driver_applications', JSON.stringify(applications));
+
+            const notifications = JSON.parse(localStorage.getItem('higala_admin_notifications') || '[]');
+            notifications.unshift({
+                type: 'driver_application',
+                message: 'New driver application from ' + data.firstName + ' ' + data.lastName,
+                at: new Date().toISOString(),
+                read: false
+            });
+            localStorage.setItem('higala_admin_notifications', JSON.stringify(notifications));
+
+            alert('✅ Application Submitted Successfully!\n\nYour application has been received and will be reviewed by our team. You will be contacted for the next steps.\n\nThank you for applying to Higala Express!');
+            form.reset();
+        }
+    </script>
+</body>
+</html>

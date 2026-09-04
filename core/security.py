@@ -14,6 +14,10 @@ from sqlalchemy.orm import Session
 
 import models
 from database import get_db
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 # Configuration Constants from central settings
 from config import settings

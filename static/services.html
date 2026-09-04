@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Higala Express - Our Services</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-green: #00B14F;
+            --dark-bg: #111111;
+            --amber-liquid: linear-gradient(135deg, #FFB800, #FF8A00, #D4AF37);
+            --text-main: #333333;
+            --light-bg: #F9F9F9;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body { background-color: #FFFFFF; color: var(--text-main); }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 50px; border-bottom: 1px solid #E5E5E5; background: #FFFFFF; position: sticky; top: 0; z-index: 1000; }
+        .logo-container { display: flex; align-items: center; gap: 10px; }
+        .logo-text { font-size: 26px; font-weight: 700; background: var(--amber-liquid); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0px 2px 4px rgba(255, 184, 0, 0.3)); }
+        nav ul { display: flex; list-style: none; gap: 30px; }
+        nav ul li a { text-decoration: none; color: #555555; font-weight: 500; transition: color 0.3s; }
+        nav ul li a:hover { color: var(--primary-green); }
+        .page-header { padding: 60px 50px 40px 50px; background: var(--light-bg); text-align: center; border-bottom: 1px solid #E5E5E5; }
+        .page-header h1 { font-size: 36px; color: #111; margin-bottom: 10px; }
+        .page-header p { font-size: 16px; color: #666; max-width: 600px; margin: 0 auto; }
+        .services-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; max-width: 1200px; margin: 0 auto; padding: 50px 20px; }
+        .service-card { background: #FFFFFF; padding: 35px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #FFB800; transition: transform 0.3s, box-shadow 0.3s, border-top-color 0.3s; }
+        .service-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0, 177, 79, 0.25); border-top-color: var(--primary-green); }
+        .service-card .icon { font-size: 48px; margin-bottom: 15px; }
+        .service-card h3 { font-size: 20px; color: #222; margin-bottom: 10px; }
+        .service-card p { font-size: 14px; color: #666; line-height: 1.6; }
+        .cta-section { background: var(--light-bg); padding: 60px 20px; text-align: center; border-top: 1px solid #E5E5E5; }
+        .cta-section h2 { font-size: 28px; color: #111; margin-bottom: 15px; }
+        .cta-section p { font-size: 16px; color: #666; margin-bottom: 25px; }
+        .cta-btn { display: inline-block; padding: 14px 35px; background: var(--amber-liquid); color: #111; font-weight: 700; text-decoration: none; border-radius: 8px; transition: transform 0.3s, box-shadow 0.3s; }
+        .cta-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(255, 184, 0, 0.4); }
+        footer { text-align: center; padding: 30px; background: #111; color: #fff; }
+        footer p { font-size: 14px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <div class="logo-text">Higala Express</div>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="contact.html">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Page Header -->
+    <section class="page-header">
+        <h1>Our Services</h1>
+        <p>Fast, reliable, and affordable delivery and transportation services for everyone in Cagayan de Oro.</p>
+    </section>
+
+    <!-- Services Grid -->
+    <div class="services-container">
+        <div class="service-card">
+            <div class="icon">🍔</div>
+            <h3>Food Delivery</h3>
+            <p>Order from your favorite restaurants and have your meals delivered hot and fresh to your doorstep.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">🛒</div>
+            <h3>Grocery Delivery</h3>
+            <p>Get your daily essentials, fresh produce, and household items delivered quickly from local stores.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">💊</div>
+            <h3>Pharmacy Delivery</h3>
+            <p>Order medicines and health products safely and have them delivered to your home.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">🏍️</div>
+            <h3>Motorcycle Taxi</h3>
+            <p>Get around CDO quickly and affordably with our reliable motorcycle taxi service.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">🚗</div>
+            <h3>Car Rides</h3>
+            <p>Comfortable and safe car rides for your daily commute or special trips around the city.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">📦</div>
+            <h3>Courier Service</h3>
+            <p>Send packages, documents, and items to anyone in CDO with our fast courier service.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">💧</div>
+            <h3>Water Delivery</h3>
+            <p>Have clean drinking water delivered straight to your home or office.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">🎁</div>
+            <h3>Gift Delivery</h3>
+            <p>Surprise your loved ones with gifts delivered right to their doorstep.</p>
+        </div>
+        <div class="service-card">
+            <div class="icon">🎉</div>
+            <h3>Party Needs</h3>
+            <p>Order everything you need for your celebrations — from food to decorations.</p>
+        </div>
+    </div>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <h2>Ready to Experience Higala Express?</h2>
+        <p>Join thousands of satisfied customers in Cagayan de Oro today.</p>
+        <a href="index.html" class="cta-btn">Get Started Now</a>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Higala Express. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>

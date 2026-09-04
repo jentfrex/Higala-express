@@ -138,7 +138,7 @@
                     </div>
                 </div>
                 <div class="flex justify-end pt-2">
-                    <button type="button" @click="currentStep = 2" class="px-6 py-2.5 bg-amberCustom text-white text-xs font-black rounded-xl shadow hover:bg-amberHover transition">Sunod (Legal Documents) →</button>
+                    <button type="button" @click="nextStep()" class="px-6 py-2.5 bg-amberCustom text-white text-xs font-black rounded-xl shadow hover:bg-amberHover transition">Sunod (Legal Documents) →</button>
                 </div>
             </div>
 
@@ -171,7 +171,7 @@
                 </div>
                 <div class="flex justify-between pt-2">
                     <button type="button" @click="currentStep = 1" class="px-5 py-2.5 bg-slate-300 text-slate-800 text-xs font-black rounded-xl hover:bg-slate-400 transition">← Balik</button>
-                    <button type="button" @click="currentStep = 3" class="px-6 py-2.5 bg-amberCustom text-white text-xs font-black rounded-xl shadow hover:bg-amberHover transition">Sunod (Lokasyon & Payout) →</button>
+                    <button type="button" @click="nextStep()" class="px-6 py-2.5 bg-amberCustom text-white text-xs font-black rounded-xl shadow hover:bg-amberHover transition">Sunod (Lokasyon & Payout) →</button>
                 </div>
             </div>
 
@@ -249,32 +249,89 @@
                     payoutAccount: '', referralCode: '', agreeTerms: false
                 },
                 handleLogin() {
-            const storeId = this.loginForm.identifier || 'My Store';
-            const sessionData = { role: 'merchant', user: { storeName: storeId, contact: storeId } };
-            localStorage.setItem('higala_merchant_session', JSON.stringify(sessionData));
-            window.location.replace('merchant.html');
-        },
+                    const identifier = this.loginForm.identifier.trim();
+                    const password = this.loginForm.password;
+                    if (!identifier) { alert('Please enter your email or contact number.'); return; }
+                    if (!password) { alert('Please enter your password.'); return; }
+                    const users = JSON.parse(localStorage.getItem('higala_users') || '[]');
+                    const merchant = users.find(u => (u.email === identifier || u.phone === identifier) && u.password === password && u.role === 'merchant');
+                    if (!merchant) { alert('Invalid credentials. Please try again.'); return; }
+                    const session = { userId: merchant.id, role: 'merchant', at: new Date().toISOString() };
+                    localStorage.setItem('higala_session', JSON.stringify(session));
+                    window.location.replace('merchant.html');
+                },
+                validateStep1() {
+                    const f = this.regForm;
+                    if (!f.storeName || f.storeName.trim().length < 3) { alert('Store Name must be at least 3 characters.'); return false; }
+                    if (!f.ownerName || f.ownerName.trim().length < 2) { alert('Please enter the owners full name.'); return false; }
+                    if (!f.contact || !/^09\d{9}$/.test(f.contact.replace(/\s/g, ''))) { alert('Please enter a valid mobile number (09XXXXXXXXX).'); return false; }
+                    if (!f.password || f.password.length < 6) { alert('Password must be at least 6 characters.'); return false; }
+                    return true;
+                },
+                validateStep2() {
+                    const f = this.regForm;
+                    if (!f.taxId || f.taxId.trim().length < 5) { alert('DTI/BIR Registration Number is required.'); return false; }
+                    if (!f.permitNo || f.permitNo.trim().length < 5) { alert('Business Permit Number is required.'); return false; }
+                    if (!f.validIdInfo || f.validIdInfo.trim().length < 5) { alert('Valid Government ID details are required.'); return false; }
+                    return true;
+                },
+                validateStep3() {
+                    const f = this.regForm;
+                    if (!f.address || f.address.trim().length < 5) { alert('Please enter your exact address.'); return false; }
+                    if (!f.payoutAccount || f.payoutAccount.trim().length < 10) { alert('Please enter a valid GCash/Maya number.'); return false; }
+                    if (!f.agreeTerms) { alert('You must agree to the Partnership Terms.'); return false; }
+                    return true;
+                },
+                nextStep() {
+                    if (this.currentStep === 1 && !this.validateStep1()) return;
+                    if (this.currentStep === 2 && !this.validateStep2()) return;
+                    if (this.currentStep < 3) this.currentStep++;
+                },
                 submitRegistration() {
-                    if (!this.regForm.agreeTerms) {
-                        alert('Palihog i-check ang Kasabutan sa Partnership.');
+                    if (!this.validateStep1() || !this.validateStep2() || !this.validateStep3()) return;
+                    const users = JSON.parse(localStorage.getItem('higala_users') || '[]');
+                    if (users.find(u => u.phone === this.regForm.contact)) {
+                        alert('This contact number is already registered.');
                         return;
                     }
-                    
-                    let existingPending = JSON.parse(localStorage.getItem('pendingMerchants') || '[]');
-                    let newMerchant = {
-                        id: Date.now(),
-                        ...this.regForm,
+                    const newMerchant = {
+                        id: 'u_merch_' + Date.now(),
+                        name: this.regForm.ownerName.trim(),
+                        storeName: this.regForm.storeName.trim(),
+                        email: this.regForm.contact + '@higala-merchant.temp',
+                        phone: this.regForm.contact.trim(),
+                        password: this.regForm.password,
                         role: 'merchant',
-                        status: 'Pending Admin Review',
-                        timestamp: new Date().toLocaleString()
+                        category: this.regForm.category,
+                        taxId: this.regForm.taxId.trim(),
+                        permitNo: this.regForm.permitNo.trim(),
+                        validId: this.regForm.validIdInfo.trim(),
+                        vehicle: this.regForm.vehicle,
+                        barangay: this.regForm.barangay,
+                        address: this.regForm.address.trim(),
+                        payoutAccount: this.regForm.payoutAccount.trim(),
+                        status: 'pending_review',
+                        verified: false,
+                        createdAt: new Date().toISOString()
                     };
-                    existingPending.push(newMerchant);
-                    localStorage.setItem('pendingMerchants', JSON.stringify(existingPending));
-
-                    // Session isolationguard
-                    localStorage.setItem('higala_session', JSON.stringify({ role: 'merchant', user: newMerchant }));
-
-                    alert('Malampusong na-submit ang imong Rehistro! Gi-diretso ka na sa imong dashboard portal.');
+                    users.push(newMerchant);
+                    localStorage.setItem('higala_users', JSON.stringify(users));
+                    const pending = JSON.parse(localStorage.getItem('higala_pending_merchants') || '[]');
+                    pending.push(newMerchant);
+                    localStorage.setItem('higala_pending_merchants', JSON.stringify(pending));
+                    const notifications = JSON.parse(localStorage.getItem('higala_admin_notifications') || '[]');
+                    notifications.unshift({
+                        type: 'merchant_application',
+                        priority: 'high',
+                        message: 'New merchant: ' + this.regForm.storeName,
+                        merchantId: newMerchant.id,
+                        at: new Date().toISOString(),
+                        read: false
+                    });
+                    localStorage.setItem('higala_admin_notifications', JSON.stringify(notifications));
+                    const session = { userId: newMerchant.id, role: 'merchant', at: new Date().toISOString() };
+                    localStorage.setItem('higala_session', JSON.stringify(session));
+                    alert('Registration Submitted! Your application is under Admin Review.');
                     window.location.href = 'merchant.html';
                 }
             }

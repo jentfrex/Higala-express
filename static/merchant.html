@@ -1,22 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#d97706">
-  <title>Higala Merchant Hub — CDO</title>
-  <script>
-    // Gihimo na namong blangko aron dili na ka sipaon pabalik sa uban nga pahina
-    localStorage.setItem('higala_merchant_session', JSON.stringify({ role: 'merchant', user: { storeName: 'My Store' } }));
-</script>
-</script>
-
-  <script src="/js/higala-db.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
-  <style>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"><meta name="theme-color" content="#d97706"><title>Higala Merchant Hub - CDO</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet"><script src="/js/higala-db.js"></script><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script><style>
     [x-cloak] { display: none !important; }
     .liquid-header {
       background: linear-gradient(135deg, rgba(217, 119, 6, 0.9), rgba(245, 158, 11, 0.7), rgba(254, 243, 199, 0.85));
@@ -45,7 +27,7 @@
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-amber-50 via-white to-amber-100 text-slate-800 antialiased"
-      x-data="merchantApp()" x-init="init()" x-cloak>
+      x-data="merchantApp()" x-init="init()" x-cloak><div x-show="showAuth" class="fixed inset-0 z-[9000] flex items-center justify-center bg-gradient-to-br from-slate-900 via-amber-950 to-amber-700 p-4"><div class="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl"><div class="mb-4 flex items-center gap-3"><div class="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-lg font-black text-white">H</div><div><h1 class="font-[Manrope] text-2xl font-extrabold">Higala Express</h1><p class="text-xs font-semibold text-amber-700">Merchant Login</p></div></div><p x-show="authError" x-text="authError" class="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"></p><form @submit.prevent="login()" class="space-y-3"><input x-model="authForm.email" type="email" required placeholder="Email" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"><input x-model="authForm.password" type="password" required placeholder="Password" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"><button type="submit" class="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 py-3 text-sm font-extrabold text-amber-950">Log In</button><button type="button" @click="location.href="index.html"" class="w-full text-xs font-bold text-amber-700">Back to portal</button></form></div></div><div x-show="!showAuth">
 
   <!-- New-order flash overlay -->
   <div x-show="flashAlert" x-transition
@@ -684,6 +666,9 @@
   function merchantApp() {
     const DB = window.HigalaDB;
     return {
+      showAuth: true,
+      authError: '',
+      authForm: { email: '', password: '' },
       activeTab: 'live',
       session: null,
       user: null,
@@ -1134,12 +1119,33 @@
         alert('Profile saved!');
       },
 
+      login() {
+        this.authError = '';
+        if (!this.authForm.email || !this.authForm.password) {
+          this.authError = 'Please fill in all fields.';
+          return;
+        }
+        // Simple auth check - in production this would validate against DB
+        const users = DB.read(DB.KEYS.users, []);
+        const user = users.find(u => u.email === this.authForm.email && u.password === this.authForm.password && u.role === 'merchant');
+        if (!user) {
+          this.authError = 'Invalid email or password.';
+          return;
+        }
+        DB.login(user);
+        this.showAuth = false;
+        this.session = DB.getSession();
+      },
       logout() {
-      DB.logout();
-      window.location.reload();
+        DB.logout();
+        // Imong JavaScript code diri...
+        this.showAuth = true;
+        this.authForm = { email: '', password: '' };
     },
-    };
-  }
-  </script>
-</body>
+}
+}
+</script>
+
+<div></div></body>
+
 </html>
