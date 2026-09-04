@@ -1457,21 +1457,28 @@ def health_check(db: Session = Depends(get_db)):
 def serve_any_static_page(page_name: str):
     if not page_name.endswith(".html"):
         page_name += ".html"
-    
-    file_path = os.path.join("static", page_name)
+
+    file_path = os.path.join(_STATIC_DIR, page_name)
     if os.path.exists(file_path):
-        return FileResponse(file_path)
-    
+        response = FileResponse(file_path)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        return response
+
     return HTMLResponse("<h1>404 - Page Not Found in Higala Express</h1>", status_code=404)
 
 @app.get("/", tags=["System"])
 def read_read(request: Request):
     if "application/json" in request.headers.get("accept", "") or "testserver" in request.headers.get("host", ""):
         return {"success": True, "service": "Higala Express Global API - National Superapp"}
-    if os.path.exists("static/index.html"):
-        return FileResponse("static/index.html")
-    if os.path.exists("static/customer.html"):
-        return FileResponse("static/customer.html")
+    # Priority-ordered list of candidate landing pages (absolute paths via _STATIC_DIR)
+    candidate_files = ["index.html", "customer.html"]
+    for filename in candidate_files:
+        candidate_path = os.path.join(_STATIC_DIR, filename)
+        if os.path.exists(candidate_path):
+            logger.info(f"[root] Serving landing page: {candidate_path}")
+            response = FileResponse(candidate_path)
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            return response
     return {"success": True, "service": "Higala Express Global API - National Superapp"}
 
 # ==========================================================
