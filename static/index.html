@@ -4,14 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Higala Express - Fast & Reliable Delivery & E-Commerce</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        // Tailwind CSS Custom Configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'higala-green': '#00B14F',
+                        'higala-gold': '#FFB800',
+                        'higala-dark': '#111111',
+                    },
+                    fontFamily: {
+                        'poppins': ['Poppins', 'sans-serif'],
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'glow': 'glow 2s ease-in-out infinite alternate',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        glow: {
+                            '0%': { boxShadow: '0 0 20px rgba(255, 184, 0, 0.3)' },
+                            '100%': { boxShadow: '0 0 40px rgba(255, 184, 0, 0.6)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
     <style>
         :root {
             --primary-green: #00B14F;
             --dark-bg: #111111;
+            --amber-gold: #FFB800;
             --amber-liquid: linear-gradient(135deg, #FFB800, #FF8A00, #D4AF37);
-            --text-main: #333333;
-            --light-bg: #F9F9F9;
         }
 
         * {
@@ -22,124 +59,226 @@
         }
 
         body {
-            background-color: #FFFFFF;
-            color: var(--text-main);
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
+            color: #333333;
             display: flex;
             flex-direction: column;
             min-height: 100vh;
         }
 
-        /* Header Navigation */
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px 50px;
-            border-bottom: 1px solid #E5E5E5;
-            background: #FFFFFF;
-            position: sticky;
-            top: 0;
-            z-index: 1000;
+        /* Glassmorphism Base Classes */
+        .glass {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
 
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .glass-card {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 2px solid rgba(255, 184, 0, 0.3);
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.6);
+            border-color: rgba(255, 184, 0, 0.6);
+            box-shadow: 
+                0 20px 60px rgba(0, 177, 79, 0.2),
+                0 0 40px rgba(255, 184, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
 
         /* Signature Golden Amber Liquid Gradient with Glow Effect */
         .logo-text {
-            font-size: 26px;
-            font-weight: 700;
+            font-size: 28px;
+            font-weight: 800;
             background: var(--amber-liquid);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0px 2px 4px rgba(255, 184, 0, 0.3));
+            filter: drop-shadow(0px 2px 8px rgba(255, 184, 0, 0.4));
+            letter-spacing: -0.5px;
         }
 
-        nav ul {
+        /* Header Styles */
+        header {
             display: flex;
-            list-style: none;
-            gap: 30px;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 50px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 184, 0, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
         }
 
         nav ul li a {
             text-decoration: none;
             color: #555555;
             font-weight: 500;
-            transition: color 0.3s;
+            transition: all 0.3s ease;
+            padding: 8px 16px;
+            border-radius: 8px;
         }
 
         nav ul li a:hover {
             color: var(--primary-green);
+            background: rgba(0, 177, 79, 0.1);
         }
 
-        /* Hero / Role Portal Selection Section */
+        /* Hero Section */
         .hero-section {
-            padding: 40px 50px;
-            background: var(--light-bg);
+            padding: 60px 50px;
             text-align: center;
-            border-bottom: 1px solid #E5E5E5;
+            position: relative;
+            overflow: hidden;
         }
 
-        /* Role Cards Grid (Customer, Merchant, Rider, Admin) */
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255, 184, 0, 0.1) 0%, transparent 70%);
+            animation: float 8s ease-in-out infinite;
+        }
+
+        /* Role Cards Grid */
         .roles-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 20px;
-            max-width: 1100px;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 0 20px;
+            position: relative;
+            z-index: 1;
         }
 
+        /* Role Card - Lutaw Kaayo Floating UI */
         .role-card {
-            background: #FFFFFF;
-            padding: 25px 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            padding: 35px 25px;
+            border-radius: 24px;
             text-align: center;
-            border-top: 4px solid #FFB800;
-            transition: transform 0.3s, box-shadow 0.3s, border-top-color 0.3s;
             text-decoration: none;
             color: inherit;
             display: block;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: translateY(0);
+        }
+
+        .role-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--amber-liquid);
+            transition: height 0.3s ease;
+        }
+
+        .role-card:hover::before {
+            height: 100%;
+            opacity: 0.1;
         }
 
         .role-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0, 177, 79, 0.25);
-            border-top-color: var(--primary-green);
+            transform: translateY(-12px) scale(1.02);
         }
 
         .role-card h3 {
-            font-size: 20px;
-            margin-bottom: 8px;
-            color: #111;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #1a1a1a;
+            position: relative;
+            z-index: 1;
         }
 
         .role-card p {
-            font-size: 13px;
+            font-size: 14px;
             color: #666;
-            margin-bottom: 15px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 1;
         }
 
+        /* Role Card Icon Container */
+        .role-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            position: relative;
+            z-index: 1;
+            transition: all 0.4s ease;
+        }
+
+        .role-card:hover .role-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        /* Customer Card - Green Theme */
+        .role-card.customer .role-icon {
+            background: linear-gradient(135deg, #00B14F 0%, #00d963 100%);
+            box-shadow: 0 10px 30px rgba(0, 177, 79, 0.3);
+        }
+
+        /* Merchant Card - Gold Theme */
+        .role-card.merchant .role-icon {
+            background: linear-gradient(135deg, #FFB800 0%, #FF8A00 100%);
+            box-shadow: 0 10px 30px rgba(255, 184, 0, 0.3);
+        }
+
+        /* Rider Card - Blue Theme */
+        .role-card.rider .role-icon {
+            background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Admin Card - Purple Theme */
+        .role-card.admin .role-icon {
+            background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+            box-shadow: 0 10px 30px rgba(139, 92, 246, 0.3);
+        }
+
+        /* Role Button */
         .role-btn {
             display: inline-block;
-            padding: 8px 16px;
+            padding: 12px 28px;
             background: var(--amber-liquid);
-            color: #111;
+            color: #1a1a1a;
             font-weight: 600;
-            font-size: 13px;
-            border-radius: 6px;
-            text-decoration: none;
+            font-size: 14px;
+            border-radius: 50px;
             transition: all 0.3s ease;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 4px 15px rgba(255, 184, 0, 0.3);
         }
 
         .role-card:hover .role-btn {
-            background: var(--primary-green);
-            color: #FFFFFF;
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(255, 184, 0, 0.5);
         }
 
         /* Main Content Container for CTA Banner */
@@ -242,7 +381,7 @@
 <body>
 
     <!-- Header Navigation with Signature Amber Liquid Logo -->
-    <header>
+    <header class="glass">
         <div class="logo-container">
             <div class="logo-text">Higala Express</div>
         </div>
@@ -260,28 +399,32 @@
     <section class="hero-section">
         <div class="roles-container">
             <!-- Customer Portal -->
-            <a href="customer.html" class="role-card">
+            <a href="customer.html" class="role-card glass-card customer">
+                <div class="role-icon">🛒</div>
                 <h3>Customer</h3>
                 <p>Order food, transportation, and e-commerce items with ease.</p>
                 <span class="role-btn">Enter Portal</span>
             </a>
 
             <!-- Merchant Portal -->
-            <a href="merchant-register.html" class="role-card">
+            <a href="merchant.html" class="role-card glass-card merchant">
+                <div class="role-icon">🏪</div>
                 <h3>Merchant</h3>
                 <p>Manage your products, branches, and inventory efficiently.</p>
                 <span class="role-btn">Enter Portal</span>
             </a>
 
             <!-- Rider Portal -->
-            <a href="driver-apply.html" class="role-card">
+            <a href="rider.html" class="role-card glass-card rider">
+                <div class="role-icon">🛵</div>
                 <h3>Rider</h3>
                 <p>Accept deliveries and track your trips in real-time.</p>
                 <span class="role-btn">Enter Portal</span>
             </a>
 
             <!-- Admin Portal -->
-            <a href="admin-login.html" class="role-card">
+            <a href="admin.html" class="role-card glass-card admin">
+                <div class="role-icon">⚙️</div>
                 <h3>Admin</h3>
                 <p>Control tower, dispatching, and system monitoring.</p>
                 <span class="role-btn">Enter Portal</span>
@@ -297,7 +440,7 @@
                 <p>Experience fast and reliable delivery services. From food, groceries, to e-commerce items — delivered straight to your doorstep in Cagayan de Oro.</p>
                 <div class="cta-buttons">
                     <a href="customer.html" class="btn-action-customer">Register as Customer</a>
-                    <a href="merchant-register.html" class="btn-action-merchant">Apply as Merchant</a>
+                    <a href="merchant.html" class="btn-action-merchant">Apply as Merchant</a>
                 </div>
             </div>
         </div>
